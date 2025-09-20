@@ -1,22 +1,51 @@
-// README.md
-
 # Get started
 
 # Activate virtual environment
 
-source .songfeiVENV/bin/activate
+    source .songfeiVENV/bin/activate
+
+# Start Postgres once per WSL session
+    sudo service postgresql start
 
 # Start the backend
 
-cd d:\Employee attendence app2\django_backend
-python manage.py runserver
+    cd ~/project/songfei/Employee attendence app2\django_backend
+    
+    # if running on windows natively:
+    python manage.py runserver
+
+    # if running on WSL:
+    python manage.py runserver 0.0.0.0:8000
+
+    # Access from your browser at: http://localhost:8000/ 
+    # Admin site will be at http://localhost:8000/admin
 
 # Start the front end
 
-cd "d:\Employee attendence app2\nextjs_frontend\songfei"
-npm run dev
+    cd ~/project/songfei/Employee attendence app2\nextjs_frontend\songfei
+    npm run dev
 
-# Database
+
+
+
+# Initial setup
+## VENV
+We are using the ".songfeiVENV" virtual environment to install python dependencies
+
+    python3 -m venv .songfeiVENV
+    source .songfeiVENV/bin/activate
+    pip install -r requirements.txt
+
+## Database
+If you don't have postgresql yet:
+
+    sudo apt install curl ca-certificates 
+    sudo install -d /usr/share/postgresql-common/pgdg 
+    sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc . /etc/os-release 
+    sudo sh -c "echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main' > /etc/apt/sources.list.d/pgdg.list" 
+    
+    sudo apt update 
+    sudo apt install postgresql-15
 
 We need to establish a connection between django and postgresql so the backend can talk to the database
 
@@ -24,37 +53,60 @@ postgresql user name: postgres (No password, for dev purpose)
 
 Command for setting up the database
 
-### CREATE DATABASE songfei_db;
+    CREATE ROLE songfei_user WITH LOGIN PASSWORD '8129';
+    CREATE DATABASE songfei_db OWNER songfei_user;
+    GRANT ALL PRIVILEGES ON DATABASE songfei_db TO songfei_user;
+    \q # to exit
 
-### CREATE USER songfei_user WITH PASSWORD '1234';
+To verify set up, from your shell (not inside psql):
 
-### GRANT ALL PRIVILEGES ON DATABASE songfei_db TO songfei_user;
+    psql -h 127.0.0.1 -U songfei_user -d songfei_db
 
-Database Name: songfei_db
-Database User: songfei_user
-User Password: 1234
-Host: localhost
-Port: 5432
-PostgreSQL Version: 15.7
+Run migrations to check:
 
-# VENV
+    python3 manage.py migrate
 
-We are using the "songVenv" virtual environment to install python dependencies
 
-# superuser
+## superuser
 
-### User name = renhua
+    python manage.py createsuperuser
 
-### password = laowewanxiang
+Use the following information:
+1. User name = renhua
+2. email = luorenhua.com@gmail.com
+3. password = laowewanxiang
 
 # helpful resources
 
 ## https://www.youtube.com/watch?v=iFEVef5XdMI&ab_channel=CodingEntrepreneurs
-
 ## https://dev.to/koladev/building-a-fullstack-application-with-django-django-rest-nextjs-3e26
 
 # Key dependenties
 
 Python 3.11.3
-PostgreSQL 15.7
+PostgreSQL 15.7 (15.14 in the new install)
 Node.js v22.14.0
+
+# Key information
+
+## Database
+Database Name: songfei_db
+
+Database User: songfei_user
+
+User Password: 8129
+
+Host: localhost
+
+Port: 5432
+
+PostgreSQL Version: 15.7 (15.14 in the new install)
+
+## Django superuser
+
+User name = renhua
+
+email = luorenhua.com@gmail.com
+
+password = laowewanxiang
+

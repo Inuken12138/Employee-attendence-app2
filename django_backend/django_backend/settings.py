@@ -59,7 +59,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'songfei_db',
         'USER': 'songfei_user',
-        'PASSWORD': '1234',
+        'PASSWORD': '8129',
         'HOST': 'localhost',
         'PORT': '5432',
     }
