@@ -83,9 +83,9 @@ Use the following information:
 
 # Key dependenties
 
-Python 3.11.3
+Python 3.11.3 (Python 3.12.3 in this new install)
 PostgreSQL 15.7 (15.14 in the new install)
-Node.js v22.14.0
+Node.js v22.14.0 
 
 # Key information
 
@@ -109,4 +109,10 @@ User name = renhua
 email = luorenhua.com@gmail.com
 
 password = laowewanxiang
+
+# How to gracefully stop all services
+1. Ctrl + C in the next.js terminal
+2. Ctrl + C in the django terminal
+3. In the same django terminal, type `deactivate`
+4. Stop PostgreSQL, `sudo service postgresql stop` and type in the password
 
