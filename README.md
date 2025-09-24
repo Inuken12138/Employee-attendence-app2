@@ -22,7 +22,7 @@
 
 # Start the front end
 
-    cd ~/project/songfei/Employee attendence app2\nextjs_frontend\songfei
+    cd ~/project/songfei/Employee\ attendence\ app2/nextjs_frontend/songfei
     npm run dev
 
 

@@ -1,3 +1,6 @@
+# default imports
+from django.shortcuts import render
+
 from rest_framework import viewsets, permissions, generics
 from .models import Employee, InventoryItem, Product, User
 from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer
@@ -6,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 
+# Create your views here.
 class IsManager(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == 'manager'
