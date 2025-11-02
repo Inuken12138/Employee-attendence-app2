@@ -8,6 +8,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
+from rest_framework.decorators import api_view
 
 # Create your views here.
 class IsManager(permissions.BasePermission):
@@ -17,7 +18,8 @@ class IsManager(permissions.BasePermission):
 class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
-    permission_classes = [permissions.IsAuthenticated, IsManager]
+    #permission_classes = [permissions.IsAuthenticated, IsManager]
+    permission_classes = []
 
 class InventoryItemViewSet(viewsets.ModelViewSet):
     queryset = InventoryItem.objects.all()

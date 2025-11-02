@@ -58,3 +58,6 @@ Thumbs.db
 # Old repo backup
 # -----------------------------
 .git_old/
+
+# Ignore the test directory
+test/

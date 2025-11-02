@@ -12,11 +12,9 @@ class User(AbstractUser):
 
 class Employee(models.Model):
     name = models.CharField(max_length=100)
-    position = models.CharField(max_length=100)
+    #position = models.CharField(max_length=100)
     base_salary = models.FloatField()
-    bonus = models.FloatField()
-    deductions = models.FloatField()
-
+    
     def __str__(self):
         return self.name
 
