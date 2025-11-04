@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 interface Employee {
   id: number;
   name: string;
-  salary: number;
+  base_salary: number;
   //created_at: string;
 }
 
@@ -35,7 +35,7 @@ export default function EmployeesPage() {
         },
         body: JSON.stringify({
           name: newEmployee.name,
-          salary: parseFloat(newEmployee.salary),
+          base_salary: parseFloat(newEmployee.salary),
         }),
       });
       
@@ -56,6 +56,23 @@ export default function EmployeesPage() {
       setEmployees(data);
     } catch (error) {
       console.error('Error searching employees:', error);
+    }
+  };
+
+  // Add this with your other functions in EmployeesPage
+  const deleteEmployee = async (id: number) => {
+    if (window.confirm('Are you sure you want to delete this employee?')) {
+      try {
+        const response = await fetch(`http://localhost:8000/api/employees/${id}/`, {
+          method: 'DELETE',
+        });
+        
+        if (response.ok) {
+          fetchEmployees(); // Refresh the list
+        }
+      } catch (error) {
+        console.error('Error deleting employee:', error);
+      }
     }
   };
 
@@ -141,6 +158,7 @@ export default function EmployeesPage() {
                   <th className="px-4 py-2 text-left">Name</th>
                   <th className="px-4 py-2 text-left">Salary</th>
                   <th className="px-4 py-2 text-left">Created</th>
+                  <th className="px-4 py-2 text-left">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -148,9 +166,17 @@ export default function EmployeesPage() {
                   <tr key={employee.id} className="border-b">
                     <td className="px-4 py-2">{employee.id}</td>
                     <td className="px-4 py-2">{employee.name}</td>
-                    <td className="px-4 py-2">${employee.salary}</td>
+                    <td className="px-4 py-2">${employee.base_salary}</td>
                     <td className="px-4 py-2">
                       {/* {new Date(employee.created_at).toLocaleDateString()} */}
+                    </td>
+                    <td className="px-4 py-2">
+                      <button
+                        onClick={() => deleteEmployee(employee.id)}
+                        className="bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600 text-sm"
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))}

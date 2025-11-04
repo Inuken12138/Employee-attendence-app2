@@ -10,6 +10,50 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+"""
+Django Settings.py - Purpose and Relationship
+
+Theoretical Understanding
+The settings.py file serves as the central configuration file for a Django project. It controls project-wide 
+settings including database connections, installed apps, middleware configuration, security settings, and 
+various Django framework options.
+
+Relationship with Other Components
+
+1. Apps and Models
+- Defines INSTALLED_APPS that Django should recognize
+- Specifies custom user model with AUTH_USER_MODEL
+- Controls database configurations that models use
+
+2. Security and Authentication
+- Manages security settings like SECRET_KEY
+- Configures authentication backends
+- Sets password validation rules
+
+3. Middleware and URLs
+- Defines middleware stack order
+- Sets root URL configuration
+- Controls CORS and other request/response modifications
+
+Current Implementation
+1. Core Settings
+- Debug mode enabled for development
+- Custom user model configured
+- PostgreSQL database connection
+- CORS configuration for frontend integration
+
+2. Security Settings
+- Development-focused configuration
+- Password validation disabled for testing
+- CORS allowed origins set for localhost
+
+3. Application Configuration
+- Django built-in apps
+- REST Framework integration
+- Custom core app
+- CORS headers support
+"""
+
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -25,6 +69,17 @@ SECRET_KEY = 'your-secret-key'
 DEBUG = True
 
 ALLOWED_HOSTS = []
+
+""" REST_FRAMEWORK = {
+    # ...existing code...
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+        'rest_framework.renderers.AdminRenderer',
+        'rest_framework.renderers.HTMLFormRenderer',
+        'rest_framework_markdown.renderers.MarkdownRenderer',
+    ],
+} """
 
 # Application definition
 
@@ -148,3 +203,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',  # Example for React running on localhost
 ]
+
+#CORS_ALLOW_ALL_ORIGINS = True
