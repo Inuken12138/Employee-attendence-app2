@@ -15,6 +15,7 @@ export default function EmployeesPage() {
 
   // Fetch all employees
   const fetchEmployees = async () => {
+    //debugger;
     try {
       const response = await fetch('http://localhost:8000/api/employees/');
       const data = await response.json();
@@ -51,7 +52,7 @@ export default function EmployeesPage() {
   // Search employees
   const searchEmployees = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/api/search/?name=${searchTerm}`);
+      const response = await fetch(`http://localhost:8000/api/employees/?search=${searchTerm}`);
       const data = await response.json();
       setEmployees(data);
     } catch (error) {
