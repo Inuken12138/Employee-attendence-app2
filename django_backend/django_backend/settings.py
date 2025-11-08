@@ -98,7 +98,7 @@ INSTALLED_APPS = [
 
     # my apps
     'core',
-    'employee_management',
+    'erp.employee_management',
     'inventory_management',
     'ecommerce',
 ]
