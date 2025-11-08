@@ -37,11 +37,10 @@ How to extend this configuration:
 """
 
 from django.contrib import admin
-from .models import User, Employee, InventoryItem, Product
+from .models import User, InventoryItem, Product
 
 
 # Register your models here.
 admin.site.register(User)
-admin.site.register(Employee)
 admin.site.register(InventoryItem)
 admin.site.register(Product)

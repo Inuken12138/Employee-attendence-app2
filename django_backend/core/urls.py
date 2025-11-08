@@ -40,22 +40,16 @@ Current Implementation
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView, employee_list, employee_detail#, EmployeeViewSet
+from .views import InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView # this is for class-based viewset. im not using them anymore so depreciate soon after i have migrated from class-based view to function-based views
 from rest_framework.authtoken.views import obtain_auth_token
-from . import views
+from . import views # this is for funtional-based views
 
-import logging
 
-logger = logging.getLogger(__name__)
 
-router = DefaultRouter()
-logger.debug("Registering EmployeeViewSet at /employees/")
-#router.register(r'employees', EmployeeViewSet)
-print("Debug: Registering InventoryItemViewSet at /inventory/")  # Debug print
+router = DefaultRouter() # class-based viewset router, remove after migration to function-based views
+
 router.register(r'inventory', InventoryItemViewSet)
-print("Debug: Registering ProductViewSet at /products/")  # Debug print
 router.register(r'products', ProductViewSet)
-print("Debug: Registering UserViewSet at /users/")  # Debug print
 router.register(r'users', UserViewSet)
 
 urlpatterns = [
@@ -64,7 +58,4 @@ urlpatterns = [
     path('logout/', LogoutView.as_view(), name='logout'),
     path('api-token-auth/', obtain_auth_token),
     path('login/', LoginView.as_view(), name='login'),
-    path('employees/', employee_list, name='employee-list'),
-    path('employees/<int:pk>/', employee_detail, name='employee-detail'),
-    
 ]

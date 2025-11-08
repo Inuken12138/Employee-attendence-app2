@@ -94,8 +94,13 @@ INSTALLED_APPS = [
     # Third-party apps
     'rest_framework',
     'rest_framework.authtoken',
-    'core',
     'corsheaders',
+
+    # my apps
+    'core',
+    'employee_management',
+    'inventory_management',
+    'ecommerce',
 ]
 
 # Custom user model
