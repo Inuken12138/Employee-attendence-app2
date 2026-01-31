@@ -83,6 +83,8 @@ How to extend:
 
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from PIL import Image, ImageOps
+import os
 
 # Create your models here.
 
@@ -102,10 +104,42 @@ class Employee(models.Model):
         return self.name
 
 class InventoryItem(models.Model):
+    item_code = models.CharField(max_length=50, blank=True)
     name = models.CharField(max_length=100)
+    image_url = models.URLField(blank=True)
+    image = models.ImageField(upload_to='inventory/', blank=True, null=True)
     quantity = models.IntegerField()
-    unit = models.CharField(max_length=20)
+    least_inventory_amount = models.IntegerField(default=0)
+    unit = models.CharField(max_length=20, blank=True)
     last_updated = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            try:
+                old = InventoryItem.objects.get(pk=self.pk)
+                if old.image and old.image != self.image:
+                    if os.path.isfile(old.image.path):
+                        os.remove(old.image.path)
+            except InventoryItem.DoesNotExist:
+                pass
+
+        super().save(*args, **kwargs)
+
+        if self.image and self.image.path:
+            try:
+                img = Image.open(self.image.path)
+                img = ImageOps.exif_transpose(img)
+                img.thumbnail((300, 300), Image.LANCZOS)
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+                img.save(self.image.path, optimize=True, quality=85)
+            except Exception:
+                pass
+
+    def delete(self, *args, **kwargs):
+        if self.image and self.image.path and os.path.isfile(self.image.path):
+            os.remove(self.image.path)
+        super().delete(*args, **kwargs)
 
 class Product(models.Model):
     name = models.CharField(max_length=100)

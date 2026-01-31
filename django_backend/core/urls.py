@@ -40,7 +40,7 @@ Current Implementation
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import EmployeeViewSet, InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView
+from .views import EmployeeViewSet, InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView, AttendancePayrollUploadView
 from rest_framework.authtoken.views import obtain_auth_token
 
 import logging
@@ -63,5 +63,6 @@ urlpatterns = [
     path('logout/', LogoutView.as_view(), name='logout'),
     path('api-token-auth/', obtain_auth_token),
     path('login/', LoginView.as_view(), name='login'),
+   path('payroll/upload-attendance/', AttendancePayrollUploadView.as_view(), name='upload-attendance'),
     
 ]

@@ -43,9 +43,25 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class InventoryItemSerializer(serializers.ModelSerializer):
+    inventory_condition = serializers.SerializerMethodField()
+
     class Meta:
         model = InventoryItem
-        fields = '__all__'
+        fields = [
+            'id',
+            'item_code',
+            'name',
+            'image_url',
+            'image',
+            'quantity',
+            'least_inventory_amount',
+            'unit',
+            'last_updated',
+            'inventory_condition',
+        ]
+
+    def get_inventory_condition(self, obj):
+        return 'requiring restock' if obj.quantity < obj.least_inventory_amount else 'normal'
 
 class ProductSerializer(serializers.ModelSerializer):
     class Meta:
