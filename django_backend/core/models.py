@@ -146,3 +146,19 @@ class Product(models.Model):
     price = models.FloatField()
     description = models.TextField(blank=True)
     image_url = models.URLField(blank=True)
+
+
+class Workplace(models.Model):
+    name = models.CharField(max_length=100)
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    radius_meters = models.FloatField(default=150)
+
+    def __str__(self):
+        return self.name
+
+
+class EmployeeFaceProfile(models.Model):
+    employee = models.OneToOneField(Employee, on_delete=models.CASCADE)
+    face_image = models.ImageField(upload_to='face_profiles/')
+    enrolled_at = models.DateTimeField(auto_now_add=True)

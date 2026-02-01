@@ -40,7 +40,7 @@ Current Implementation
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import EmployeeViewSet, InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView, AttendancePayrollUploadView
+from .views import EmployeeViewSet, InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView, AttendancePayrollUploadView, WorkplaceViewSet, FaceEnrollView, FaceVerifyView
 from rest_framework.authtoken.views import obtain_auth_token
 
 import logging
@@ -56,6 +56,7 @@ print("Debug: Registering ProductViewSet at /products/")  # Debug print
 router.register(r'products', ProductViewSet)
 print("Debug: Registering UserViewSet at /users/")  # Debug print
 router.register(r'users', UserViewSet)
+router.register(r'workplaces', WorkplaceViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -64,5 +65,7 @@ urlpatterns = [
     path('api-token-auth/', obtain_auth_token),
     path('login/', LoginView.as_view(), name='login'),
    path('payroll/upload-attendance/', AttendancePayrollUploadView.as_view(), name='upload-attendance'),
+   path('face/enroll/', FaceEnrollView.as_view(), name='face-enroll'),
+   path('face/verify/', FaceVerifyView.as_view(), name='face-verify'),
     
 ]

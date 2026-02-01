@@ -116,3 +116,29 @@ password = laowewanxiang
 3. In the same django terminal, type `deactivate`
 4. Stop PostgreSQL, `sudo service postgresql stop` and type in the password
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Random notes to self:
+nuke songfei_db database and rebuild it:
+
+    sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS songfei_db;"
+    sudo -u postgres psql -d postgres -c "CREATE DATABASE songfei_db OWNER songfei_user;"
+    python manage.py migrate

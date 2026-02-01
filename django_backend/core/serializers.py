@@ -35,7 +35,7 @@ Current Implementation
 """
 
 from rest_framework import serializers
-from .models import Employee, InventoryItem, Product, User
+from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile
 
 class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -82,3 +82,15 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = User.objects.create_user(**validated_data)
         return user
+
+
+class WorkplaceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Workplace
+        fields = '__all__'
+
+
+class EmployeeFaceProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeFaceProfile
+        fields = '__all__'

@@ -86,77 +86,67 @@ export default function InventoryDetailPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Inventory Item Detail</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+        <h1 className="text-3xl font-bold">Inventory Movement History</h1>
         <Link href="/erp/inventory" className="text-blue-600 hover:underline">
           Back to Inventory
         </Link>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Inventory Movement History</h2>
+      <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+        <div style={{ flex: 2 }} className="rounded-lg border border-gray-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full table-auto border">
+            <table className="min-w-full table-auto text-sm border-collapse">
               <thead>
-                <tr className="bg-green-100">
-                  <th className="px-3 py-2 text-left" colSpan={5}>Incoming (Restock)</th>
-                </tr>
-                <tr className="bg-gray-50">
-                  <th className="px-3 py-2 text-left">Date</th>
-                  <th className="px-3 py-2 text-left">Cost</th>
-                  <th className="px-3 py-2 text-left">Delivery Fees</th>
-                  <th className="px-3 py-2 text-left">Total Cost</th>
-                  <th className="px-3 py-2 text-left">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b">
-                  <td className="px-3 py-3 text-gray-400" colSpan={5}>Placeholder rows for future incoming transactions</td>
-                </tr>
-              </tbody>
-              <thead>
-                <tr className="bg-blue-100">
-                  <th className="px-3 py-2 text-left" colSpan={3}>Outgoing (Sales)</th>
-                </tr>
-                <tr className="bg-gray-50">
-                  <th className="px-3 py-2 text-left">Date</th>
-                  <th className="px-3 py-2 text-left">Sale Price</th>
-                  <th className="px-3 py-2 text-left">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b">
-                  <td className="px-3 py-3 text-gray-400" colSpan={3}>Placeholder rows for future outgoing transactions</td>
-                </tr>
-              </tbody>
-              <thead>
-                <tr className="bg-purple-100">
-                  <th className="px-3 py-2 text-left" colSpan={2}>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
                 <tr>
-                  <td className="px-3 py-3 text-gray-400" colSpan={2}>Placeholder notes area for future use</td>
+                  <th className="bg-green-200 px-3 py-2 text-center" colSpan={5}>Incoming (Restock)</th>
+                  <th className="bg-orange-200 px-3 py-2 text-center" colSpan={3}>Outgoing (Sales)</th>
+                  <th className="bg-purple-200 px-3 py-2 text-center" colSpan={1}>Notes</th>
                 </tr>
+                <tr>
+                  <th className="bg-green-100 px-3 py-2 text-center border">Date</th>
+                  <th className="bg-green-100 px-3 py-2 text-center border">Cost</th>
+                  <th className="bg-green-100 px-3 py-2 text-center border">Delivery Fees</th>
+                  <th className="bg-green-100 px-3 py-2 text-center border">Total Cost</th>
+                  <th className="bg-green-100 px-3 py-2 text-center border">Amount</th>
+                  <th className="bg-orange-100 px-3 py-2 text-center border">Date</th>
+                  <th className="bg-orange-100 px-3 py-2 text-center border">Sale Price</th>
+                  <th className="bg-orange-100 px-3 py-2 text-center border">Amount</th>
+                  <th className="bg-purple-100 px-3 py-2 text-center border">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 20 }).map((_, index) => (
+                  <tr key={`row-${index}`}>
+                    <td className="bg-green-50 px-3 py-2 border"> </td>
+                    <td className="bg-green-50 px-3 py-2 border"> </td>
+                    <td className="bg-green-50 px-3 py-2 border"> </td>
+                    <td className="bg-green-50 px-3 py-2 border"> </td>
+                    <td className="bg-green-50 px-3 py-2 border"> </td>
+                    <td className="bg-orange-50 px-3 py-2 border"> </td>
+                    <td className="bg-orange-50 px-3 py-2 border"> </td>
+                    <td className="bg-orange-50 px-3 py-2 border"> </td>
+                    <td className="bg-purple-50 px-3 py-2 border"> </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Item Summary</h2>
-          <div className="space-y-3 text-sm">
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4">
+            <h2 className="text-lg font-semibold mb-4">Item Summary</h2>
             {item?.image && (
               <div className="mb-4">
                 <img
                   src={getImageSrc(item.image) || ''}
                   alt={item.name}
-                  className="h-32 w-full rounded border object-cover"
+                  className="h-40 w-full rounded border object-cover"
                 />
               </div>
             )}
-            <form onSubmit={updateImage} className="space-y-2">
+            <form onSubmit={updateImage} className="space-y-2 mb-4">
               <label className="block text-sm font-medium text-gray-700">Replace Image</label>
               <input
                 type="file"
@@ -167,34 +157,40 @@ export default function InventoryDetailPage() {
               <button
                 type="submit"
                 disabled={!newImage || isUploading}
-                className="rounded-md bg-emerald-600 px-3 py-2 text-white shadow hover:bg-emerald-700 disabled:opacity-60"
+                className="w-full rounded-md bg-emerald-600 px-3 py-2 text-white shadow hover:bg-emerald-700 disabled:opacity-60"
               >
                 {isUploading ? 'Updating...' : 'Update Image'}
               </button>
             </form>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Product Code:</span>
-              <span>{item?.item_code || '-'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Product Name:</span>
-              <span>{item?.name || '-'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Remaining Amount:</span>
-              <span>{item?.quantity ?? '-'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Least Inventory:</span>
-              <span>{item?.least_inventory_amount ?? '-'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Condition:</span>
-              <span className={condition === 'requiring restock' ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
-                {condition}
-              </span>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between rounded bg-rose-100 px-3 py-2">
+                <span>Product Code</span>
+                <span>{item?.item_code || '-'}</span>
+              </div>
+              <div className="flex justify-between rounded bg-rose-200 px-3 py-2">
+                <span>Product Name</span>
+                <span>{item?.name || '-'}</span>
+              </div>
+              <div className="flex justify-between rounded bg-rose-100 px-3 py-2">
+                <span>Remaining Amount</span>
+                <span>{item?.quantity ?? '-'}</span>
+              </div>
+              <div className="flex justify-between rounded bg-rose-200 px-3 py-2">
+                <span>Least Inventory</span>
+                <span>{item?.least_inventory_amount ?? '-'}</span>
+              </div>
+              <div className="flex justify-between rounded bg-rose-100 px-3 py-2">
+                <span>Condition</span>
+                <span className={condition === 'requiring restock' ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
+                  {condition}
+                </span>
+              </div>
             </div>
           </div>
+
+          <button className="w-full rounded-xl bg-red-500 px-4 py-3 text-white text-lg font-semibold shadow-lg hover:bg-red-600">
+            Save
+          </button>
         </div>
       </div>
     </div>

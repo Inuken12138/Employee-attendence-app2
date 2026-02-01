@@ -103,8 +103,8 @@ How to extend:
 from django.shortcuts import render
 
 from rest_framework import viewsets, permissions, generics
-from .models import Employee, InventoryItem, Product, User
-from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer
+from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile
+from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer, WorkplaceSerializer, EmployeeFaceProfileSerializer
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -115,6 +115,7 @@ from django.utils import timezone
 import calendar
 import pandas as pd
 import re
+import math
 
 # Create your views here.
 class IsManager(permissions.BasePermission):
@@ -141,6 +142,12 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
+
+class WorkplaceViewSet(viewsets.ModelViewSet):
+    queryset = Workplace.objects.all()
+    serializer_class = WorkplaceSerializer
+    permission_classes = []
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
@@ -159,6 +166,77 @@ class LoginView(APIView):
             token, _ = Token.objects.get_or_create(user=user)
             return Response({'token': token.key})
         return Response({'error': 'Invalid credentials'}, status=400)
+
+
+def _haversine_meters(lat1, lon1, lat2, lon2):
+    r = 6371000
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return 2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+class FaceEnrollView(APIView):
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        employee_id = request.data.get('employee_id')
+        face_image = request.FILES.get('face_image')
+        if not employee_id or not face_image:
+            return Response({'error': 'employee_id and face_image are required.'}, status=400)
+
+        try:
+            employee = Employee.objects.get(pk=employee_id)
+        except Employee.DoesNotExist:
+            return Response({'error': 'Employee not found.'}, status=404)
+
+        profile, _ = EmployeeFaceProfile.objects.update_or_create(
+            employee=employee,
+            defaults={'face_image': face_image},
+        )
+        return Response(EmployeeFaceProfileSerializer(profile).data)
+
+
+class FaceVerifyView(APIView):
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        employee_id = request.data.get('employee_id')
+        lat = request.data.get('latitude')
+        lng = request.data.get('longitude')
+
+        if not employee_id or lat is None or lng is None:
+            return Response({'error': 'employee_id, latitude, and longitude are required.'}, status=400)
+
+        try:
+            employee = Employee.objects.get(pk=employee_id)
+        except Employee.DoesNotExist:
+            return Response({'error': 'Employee not found.'}, status=404)
+
+        try:
+            lat = float(lat)
+            lng = float(lng)
+        except ValueError:
+            return Response({'error': 'Invalid latitude/longitude.'}, status=400)
+
+        workplace = Workplace.objects.first()
+        if not workplace:
+            return Response({'error': 'No workplace configured.'}, status=400)
+
+        distance = _haversine_meters(lat, lng, workplace.latitude, workplace.longitude)
+        within_geofence = distance <= workplace.radius_meters
+
+        has_profile = EmployeeFaceProfile.objects.filter(employee=employee).exists()
+
+        return Response({
+            'employee_id': employee.id,
+            'within_geofence': within_geofence,
+            'distance_meters': round(distance, 2),
+            'face_profile_enrolled': has_profile,
+            'verified': within_geofence and has_profile,
+        })
 
 
 def _extract_month_from_filename(filename):
