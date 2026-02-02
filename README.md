@@ -1,13 +1,42 @@
 # Get started
 
-# Activate virtual environment
+## Quick Start (Automated)
+
+**Start all services with a single command:**
+
+    ./start.sh
+
+This will automatically:
+- Activate the virtual environment
+- Start PostgreSQL
+- Start the Django backend server (http://localhost:8000/)
+- Start the Next.js frontend server (http://localhost:3000/)
+
+**Stop all services:**
+
+    ./stop.sh
+
+This will gracefully stop the backend and frontend servers, and optionally stop PostgreSQL.
+
+**View logs:**
+
+    tail -f logs/backend.log    # Django backend logs
+    tail -f logs/frontend.log   # Next.js frontend logs
+
+---
+
+## Manual Start (Traditional Method)
+
+If you prefer to start services manually:
+
+### Activate virtual environment
 
     source .songfeiVENV/bin/activate
 
-# Start Postgres once per WSL session
+### Start Postgres once per WSL session
     sudo service postgresql start
 
-# Start the backend
+### Start the backend
 
     cd ~/project/songfei/Employee attendence app2\django_backend
     
@@ -20,7 +49,7 @@
     # Access from your browser at: http://localhost:8000/ 
     # Admin site will be at http://localhost:8000/admin
 
-# Start the front end
+### Start the front end
 
     cd ~/project/songfei/Employee\ attendence\ app2/nextjs_frontend/songfei
     npm run dev
@@ -111,6 +140,11 @@ email = luorenhua.com@gmail.com
 password = laowewanxiang
 
 # How to gracefully stop all services
+
+## Quick Stop (Automated)
+    ./stop.sh
+
+## Manual Stop
 1. Ctrl + C in the next.js terminal
 2. Ctrl + C in the django terminal
 3. In the same django terminal, type `deactivate`
