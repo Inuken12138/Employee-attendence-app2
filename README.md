@@ -23,6 +23,41 @@ This will gracefully stop the backend and frontend servers, and optionally stop 
     tail -f logs/backend.log    # Django backend logs
     tail -f logs/frontend.log   # Next.js frontend logs
 
+### Troubleshooting
+
+If you encounter issues with the automated startup:
+
+1. **Permission denied error**: Make sure the scripts are executable:
+   ```
+   chmod +x start.sh stop.sh
+   ```
+
+2. **Virtual environment not found**: Create and set up the virtual environment first:
+   ```
+   python3 -m venv .songfeiVENV
+   source .songfeiVENV/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. **PostgreSQL connection issues**: Make sure PostgreSQL is running and the database is set up:
+   ```
+   sudo service postgresql status
+   ```
+
+4. **Port already in use**: Check if services are already running:
+   ```
+   # Check if backend is running on port 8000
+   lsof -i :8000
+   # Check if frontend is running on port 3000
+   lsof -i :3000
+   ```
+
+5. **View real-time logs**: If services don't start properly, check the logs:
+   ```
+   tail -f logs/backend.log
+   tail -f logs/frontend.log
+   ```
+
 ---
 
 ## Manual Start (Traditional Method)
