@@ -110,157 +110,162 @@ export default function InventoryPage() {
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Inventory Management</h1>
-          <p className="text-gray-600">Track inventory levels and view item history.</p>
+    <div>
+      <div className="kicker">Inventory</div>
+      <h1 className="hero-title" style={{ fontSize: 'clamp(2rem, 4vw, 3rem)' }}>Inventory intelligence at a glance.</h1>
+      <p className="hero-copy">
+        Track product stock, monitor thresholds, and open item histories instantly.
+      </p>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginTop: '1.8rem' }}>
+        <div className="tag-row">
+          <span className="badge">Live Stock</span>
+          <span className="badge badge-success">Auto Alerts</span>
         </div>
-        <button
-          onClick={() => setShowForm((prev) => !prev)}
-          className="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-white shadow hover:bg-emerald-700"
-        >
+        <button onClick={() => setShowForm((prev) => !prev)} className="btn btn-primary">
           {showForm ? 'Close' : 'Add New Inventory'}
         </button>
       </div>
 
       {showForm && (
-        <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-          <h2 className="text-xl font-semibold mb-4">New Inventory Item</h2>
-          <p className="text-sm text-gray-600 mb-4">
+        <div className="card card-glass" style={{ marginTop: '1.8rem' }}>
+          <h2 className="section-title">New Inventory Item</h2>
+          <p className="muted">
             Fill in the basic product details to start tracking stock levels.
           </p>
-          <form onSubmit={createItem} className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Item Code</label>
-              <input
-                name="item_code"
-                value={form.item_code}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                placeholder="e.g. G1"
-              />
+          <form onSubmit={createItem} className="form-grid" style={{ marginTop: '1.5rem' }}>
+            <div className="grid-2">
+              <div className="form-field">
+                <label>Item Code</label>
+                <input
+                  name="item_code"
+                  value={form.item_code}
+                  onChange={handleChange}
+                  className="input"
+                  placeholder="e.g. G1"
+                />
+              </div>
+              <div className="form-field">
+                <label>Product Name</label>
+                <input
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  className="input"
+                  placeholder="Product name"
+                  required
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Product Name</label>
-              <input
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                placeholder="Product name"
-                required
-              />
+            <div className="grid-2">
+              <div className="form-field">
+                <label>Product Image (Upload)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                  className="input"
+                />
+              </div>
+              <div className="form-field">
+                <label>Unit</label>
+                <input
+                  name="unit"
+                  value={form.unit}
+                  onChange={handleChange}
+                  className="input"
+                  placeholder="pcs, boxes, etc."
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Product Image (Upload)</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-              />
+            <div className="grid-2">
+              <div className="form-field">
+                <label>Remaining Amount</label>
+                <input
+                  name="quantity"
+                  type="number"
+                  value={form.quantity}
+                  onChange={handleChange}
+                  className="input"
+                  required
+                />
+              </div>
+              <div className="form-field">
+                <label>Least Inventory Amount</label>
+                <input
+                  name="least_inventory_amount"
+                  type="number"
+                  value={form.least_inventory_amount}
+                  onChange={handleChange}
+                  className="input"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Unit</label>
-              <input
-                name="unit"
-                value={form.unit}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                placeholder="pcs, boxes, etc."
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Remaining Amount</label>
-              <input
-                name="quantity"
-                type="number"
-                value={form.quantity}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Least Inventory Amount</label>
-              <input
-                name="least_inventory_amount"
-                type="number"
-                value={form.least_inventory_amount}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-              />
-            </div>
-            <div className="md:col-span-2 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="rounded-md border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
-              >
+            <div style={{ display: 'flex', gap: '0.8rem', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setShowForm(false)} className="btn btn-outline">
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="rounded-md bg-emerald-600 px-4 py-2 text-white shadow hover:bg-emerald-700"
-              >
+              <button type="submit" className="btn btn-primary">
                 Save Item
               </button>
             </div>
           </form>
         </div>
       )}
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <div className="overflow-x-auto">
-          <table className="min-w-full table-auto">
+
+      <div className="card card-glass" style={{ marginTop: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <h2 className="section-title">Inventory Items</h2>
+          <span className="pill">Catalog</span>
+        </div>
+        <div className="overflow-x-auto" style={{ marginTop: '1rem' }}>
+          <table className="table">
             <thead>
-              <tr className="bg-gray-100">
-                <th className="px-4 py-2 text-left">Item Code</th>
-                <th className="px-4 py-2 text-left">Product Name</th>
-                <th className="px-4 py-2 text-left">Product Image</th>
-                <th className="px-4 py-2 text-left">Remaining Amount</th>
-                <th className="px-4 py-2 text-left">Inventory Condition</th>
-                <th className="px-4 py-2 text-left">Action</th>
+              <tr>
+                <th>Item Code</th>
+                <th>Product Name</th>
+                <th>Product Image</th>
+                <th>Remaining Amount</th>
+                <th>Inventory Condition</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-gray-500" colSpan={6}>
+                  <td colSpan={6} className="muted" style={{ padding: '1rem 0' }}>
                     No inventory items yet.
                   </td>
                 </tr>
               ) : (
-                items.map((item) => (
-                  <tr key={item.id} className="border-b">
-                    <td className="px-4 py-2">{item.item_code || '-'}</td>
-                    <td className="px-4 py-2">{item.name}</td>
-                    <td className="px-4 py-2">
+                items.map((item, index) => (
+                  <tr key={item.id} className={index % 2 === 0 ? 'table-row-highlight' : ''}>
+                    <td>{item.item_code || '-'}</td>
+                    <td>{item.name}</td>
+                    <td>
                       {item.image ? (
                         <img
                           src={getImageSrc(item.image) || ''}
                           alt={item.name}
-                          className="h-16 w-24 rounded border object-cover"
+                          style={{ width: '90px', height: '64px', objectFit: 'cover', borderRadius: '10px' }}
                         />
                       ) : (
-                        <div className="h-16 w-24 rounded border bg-gray-100" />
+                        <div style={{ width: '90px', height: '64px', borderRadius: '10px', background: 'rgba(245, 242, 234, 0.08)' }} />
                       )}
                     </td>
-                    <td className="px-4 py-2">{item.quantity}</td>
-                    <td className="px-4 py-2">
+                    <td>{item.quantity}</td>
+                    <td>
                       {item.inventory_condition ||
                         (item.quantity < item.least_inventory_amount ? 'requiring restock' : 'normal')}
                     </td>
-                    <td className="px-4 py-2 space-x-2">
-                      <Link
-                        href={`/erp/inventory/${item.id}`}
-                        className="inline-flex items-center rounded-md bg-green-600 px-4 py-2 text-white shadow hover:bg-green-700"
-                      >
-                        MORE
+                    <td style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                      <Link href={`/erp/inventory/${item.id}`} className="btn btn-primary">
+                        View More
                       </Link>
                       <button
                         onClick={() => deleteItem(item.id)}
-                        className="inline-flex items-center rounded-md bg-red-600 px-3 py-2 text-white shadow hover:bg-red-700"
+                        className="btn btn-outline"
+                        style={{ borderColor: 'rgba(255, 107, 107, 0.4)', color: 'var(--danger)' }}
                       >
                         Delete
                       </button>

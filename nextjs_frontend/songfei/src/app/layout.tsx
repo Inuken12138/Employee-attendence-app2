@@ -1,16 +1,33 @@
 import React, { ReactNode } from 'react';
+import Link from 'next/link';
+import { Literata, Unbounded } from 'next/font/google';
+import './globals.css';
+import ConditionalHeader from './components/ConditionalHeader';
+
+const literata = Literata({
+  subsets: ['latin'],
+  variable: '--font-body',
+  weight: ['300', '400', '500', '600', '700'],
+});
+
+const unbounded = Unbounded({
+  subsets: ['latin'],
+  variable: '--font-display',
+  weight: ['400', '500', '600', '700'],
+});
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>
-        <header style={{ padding: '1rem', background: '#eee' }}>
-          <a href="/">🏠 Home</a> | <a href="/products">🛍️ Products</a> | <a href="/cart">🛒 Cart</a> | <a href="/login">🔐 Login</a>
-        </header>
-        <main>{children}</main>
-        <footer style={{ padding: '1rem', background: '#eee', marginTop: '2rem' }}>
-          <p>© 2024 Your Shop Name</p>
-        </footer>
+      <body className={`${literata.variable} ${unbounded.variable}`}>
+        <div className="app-shell">
+          <ConditionalHeader />
+          <main className="app-main">{children}</main>
+          <footer className="app-footer">
+            <span>© 2026 Songfei Operations Suite</span>
+            <span className="muted">Precision inventory, payroll, and attendance.</span>
+          </footer>
+        </div>
       </body>
     </html>
   );

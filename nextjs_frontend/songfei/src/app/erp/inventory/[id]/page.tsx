@@ -85,48 +85,55 @@ export default function InventoryDetailPage() {
     : '-';
 
   return (
-    <div className="container mx-auto p-6">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-        <h1 className="text-3xl font-bold">Inventory Movement History</h1>
-        <Link href="/erp/inventory" className="text-blue-600 hover:underline">
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <div className="kicker">Inventory Detail</div>
+          <h1 className="hero-title" style={{ fontSize: 'clamp(2rem, 4vw, 3rem)' }}>Inventory Movement History</h1>
+        </div>
+        <Link href="/erp/inventory" className="btn btn-outline">
           Back to Inventory
         </Link>
       </div>
 
-      <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-        <div style={{ flex: 2 }} className="rounded-lg border border-gray-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full table-auto text-sm border-collapse">
+      <div className="split-layout">
+        <div className="card card-glass">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <h2 className="section-title">Movement Timeline</h2>
+            <span className="pill">History</span>
+          </div>
+          <div className="overflow-x-auto" style={{ marginTop: '1rem' }}>
+            <table className="table">
               <thead>
                 <tr>
-                  <th className="bg-green-200 px-3 py-2 text-center" colSpan={5}>Incoming (Restock)</th>
-                  <th className="bg-orange-200 px-3 py-2 text-center" colSpan={3}>Outgoing (Sales)</th>
-                  <th className="bg-purple-200 px-3 py-2 text-center" colSpan={1}>Notes</th>
+                  <th colSpan={5}>Incoming (Restock)</th>
+                  <th colSpan={3}>Outgoing (Sales)</th>
+                  <th colSpan={1}>Notes</th>
                 </tr>
                 <tr>
-                  <th className="bg-green-100 px-3 py-2 text-center border">Date</th>
-                  <th className="bg-green-100 px-3 py-2 text-center border">Cost</th>
-                  <th className="bg-green-100 px-3 py-2 text-center border">Delivery Fees</th>
-                  <th className="bg-green-100 px-3 py-2 text-center border">Total Cost</th>
-                  <th className="bg-green-100 px-3 py-2 text-center border">Amount</th>
-                  <th className="bg-orange-100 px-3 py-2 text-center border">Date</th>
-                  <th className="bg-orange-100 px-3 py-2 text-center border">Sale Price</th>
-                  <th className="bg-orange-100 px-3 py-2 text-center border">Amount</th>
-                  <th className="bg-purple-100 px-3 py-2 text-center border">Notes</th>
+                  <th>Date</th>
+                  <th>Cost</th>
+                  <th>Delivery Fees</th>
+                  <th>Total Cost</th>
+                  <th>Amount</th>
+                  <th>Date</th>
+                  <th>Sale Price</th>
+                  <th>Amount</th>
+                  <th>Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {Array.from({ length: 20 }).map((_, index) => (
-                  <tr key={`row-${index}`}>
-                    <td className="bg-green-50 px-3 py-2 border"> </td>
-                    <td className="bg-green-50 px-3 py-2 border"> </td>
-                    <td className="bg-green-50 px-3 py-2 border"> </td>
-                    <td className="bg-green-50 px-3 py-2 border"> </td>
-                    <td className="bg-green-50 px-3 py-2 border"> </td>
-                    <td className="bg-orange-50 px-3 py-2 border"> </td>
-                    <td className="bg-orange-50 px-3 py-2 border"> </td>
-                    <td className="bg-orange-50 px-3 py-2 border"> </td>
-                    <td className="bg-purple-50 px-3 py-2 border"> </td>
+                  <tr key={`row-${index}`} className={index % 2 === 0 ? 'table-row-highlight' : ''}>
+                    <td> </td>
+                    <td> </td>
+                    <td> </td>
+                    <td> </td>
+                    <td> </td>
+                    <td> </td>
+                    <td> </td>
+                    <td> </td>
+                    <td> </td>
                   </tr>
                 ))}
               </tbody>
@@ -134,61 +141,63 @@ export default function InventoryDetailPage() {
           </div>
         </div>
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4">
-            <h2 className="text-lg font-semibold mb-4">Item Summary</h2>
+        <div className="floating-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="card">
+            <div className="pill">Item Summary</div>
             {item?.image && (
-              <div className="mb-4">
+              <div style={{ marginTop: '1rem' }}>
                 <img
                   src={getImageSrc(item.image) || ''}
                   alt={item.name}
-                  className="h-40 w-full rounded border object-cover"
+                  style={{ borderRadius: '18px', height: '200px', width: '100%', objectFit: 'cover' }}
                 />
               </div>
             )}
-            <form onSubmit={updateImage} className="space-y-2 mb-4">
-              <label className="block text-sm font-medium text-gray-700">Replace Image</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setNewImage(e.target.files?.[0] || null)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2"
-              />
+            <form onSubmit={updateImage} className="form-grid" style={{ marginTop: '1.2rem' }}>
+              <div className="form-field">
+                <label>Replace Image</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setNewImage(e.target.files?.[0] || null)}
+                  className="input"
+                />
+              </div>
               <button
                 type="submit"
                 disabled={!newImage || isUploading}
-                className="w-full rounded-md bg-emerald-600 px-3 py-2 text-white shadow hover:bg-emerald-700 disabled:opacity-60"
+                className="btn btn-primary"
+                style={{ justifyContent: 'center' }}
               >
                 {isUploading ? 'Updating...' : 'Update Image'}
               </button>
             </form>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between rounded bg-rose-100 px-3 py-2">
-                <span>Product Code</span>
-                <span>{item?.item_code || '-'}</span>
+            <div className="divider" />
+            <div className="form-grid">
+              <div className="stat">
+                <span className="stat-value">{item?.item_code || '-'}</span>
+                <span className="stat-label">Product Code</span>
               </div>
-              <div className="flex justify-between rounded bg-rose-200 px-3 py-2">
-                <span>Product Name</span>
-                <span>{item?.name || '-'}</span>
+              <div className="stat">
+                <span className="stat-value">{item?.name || '-'}</span>
+                <span className="stat-label">Product Name</span>
               </div>
-              <div className="flex justify-between rounded bg-rose-100 px-3 py-2">
-                <span>Remaining Amount</span>
-                <span>{item?.quantity ?? '-'}</span>
+              <div className="stat">
+                <span className="stat-value">{item?.quantity ?? '-'}</span>
+                <span className="stat-label">Remaining Amount</span>
               </div>
-              <div className="flex justify-between rounded bg-rose-200 px-3 py-2">
-                <span>Least Inventory</span>
-                <span>{item?.least_inventory_amount ?? '-'}</span>
+              <div className="stat">
+                <span className="stat-value">{item?.least_inventory_amount ?? '-'}</span>
+                <span className="stat-label">Least Inventory</span>
               </div>
-              <div className="flex justify-between rounded bg-rose-100 px-3 py-2">
-                <span>Condition</span>
-                <span className={condition === 'requiring restock' ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
-                  {condition}
-                </span>
+              <div className="stat">
+                <span className="stat-value">{condition}</span>
+                <span className="stat-label">Condition</span>
               </div>
             </div>
           </div>
 
-          <button className="w-full rounded-xl bg-red-500 px-4 py-3 text-white text-lg font-semibold shadow-lg hover:bg-red-600">
+          <button className="btn btn-outline" style={{ justifyContent: 'center' }}>
             Save
           </button>
         </div>

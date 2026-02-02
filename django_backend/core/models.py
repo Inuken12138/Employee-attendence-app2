@@ -83,8 +83,10 @@ How to extend:
 
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.utils.text import slugify
 from PIL import Image, ImageOps
 import os
+import uuid
 
 # Create your models here.
 
@@ -141,11 +143,86 @@ class InventoryItem(models.Model):
             os.remove(self.image.path)
         super().delete(*args, **kwargs)
 
+class Category(models.Model):
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children')
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=250, unique=True)
+    image = models.ImageField(upload_to='categories/', blank=True, null=True)
+    display_order = models.IntegerField(default=0)
+
+    class Meta:
+        verbose_name_plural = 'Categories'
+        ordering = ['display_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.name)
+            slug = base_slug
+            counter = 1
+            while Category.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{str(uuid.uuid4())[:6]}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+    def get_breadcrumb(self):
+        """Return breadcrumb path as list of categories from root to self"""
+        breadcrumb = []
+        current = self
+        while current:
+            breadcrumb.insert(0, {'id': current.id, 'name': current.name, 'slug': current.slug})
+            current = current.parent
+        return breadcrumb
+
+    def get_all_descendants(self):
+        """Get all descendant categories recursively"""
+        descendants = []
+        for child in self.children.all():
+            descendants.append(child)
+            descendants.extend(child.get_all_descendants())
+        return descendants
+
+    def get_level(self):
+        """Get the depth level of this category (1 = root, 2 = child of root, etc.)"""
+        level = 1
+        current = self.parent
+        while current:
+            level += 1
+            current = current.parent
+        return level
+
+
 class Product(models.Model):
+    product_id = models.CharField(max_length=50, unique=True)
     name = models.CharField(max_length=100)
     price = models.FloatField()
     description = models.TextField(blank=True)
-    image_url = models.URLField(blank=True)
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
+    slug = models.SlugField(max_length=250, unique=True, blank=True)
+    image = models.ImageField(upload_to='products/', blank=True, null=True)
+    colour = models.CharField(max_length=50, blank=True)
+    material = models.CharField(max_length=100, blank=True)
+    is_best_seller = models.BooleanField(default=False)
+    is_new = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} ({self.product_id})"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = f"{slugify(self.name)}-{self.product_id}"
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.image and self.image.path and os.path.isfile(self.image.path):
+            os.remove(self.image.path)
+        super().delete(*args, **kwargs)
 
 
 class Workplace(models.Model):

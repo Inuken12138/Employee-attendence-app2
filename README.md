@@ -142,3 +142,7 @@ nuke songfei_db database and rebuild it:
     sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS songfei_db;"
     sudo -u postgres psql -d postgres -c "CREATE DATABASE songfei_db OWNER songfei_user;"
     python manage.py migrate
+
+quickly access the db:
+
+    python manage.py dbshell

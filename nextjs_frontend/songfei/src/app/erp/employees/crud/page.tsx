@@ -76,94 +76,103 @@ export default function EmployeeCrudPage() {
   }, []);
 
   return (
-    <div className="container mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6">Employee CRUD</h1>
+    <div>
+      <div className="kicker">Employee Records</div>
+      <h1 className="hero-title" style={{ fontSize: 'clamp(2rem, 4vw, 3rem)' }}>Keep every staff detail aligned.</h1>
+      <p className="hero-copy">
+        Add new hires, update salary baselines, and search the roster instantly.
+      </p>
 
-      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-        <h2 className="text-xl font-semibold mb-4">Add New Employee</h2>
-        <form onSubmit={createEmployee} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Name</label>
-            <input
-              type="text"
-              value={newEmployee.name}
-              onChange={(e) => setNewEmployee({ ...newEmployee, name: e.target.value })}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Salary</label>
-            <input
-              type="number"
-              step="0.01"
-              value={newEmployee.salary}
-              onChange={(e) => setNewEmployee({ ...newEmployee, salary: e.target.value })}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-          >
-            Add Employee
-          </button>
-        </form>
-      </div>
+      <div className="grid-2" style={{ marginTop: '2rem' }}>
+        <div className="card card-glass">
+          <h2 className="section-title">Add New Employee</h2>
+          <form onSubmit={createEmployee} className="form-grid" style={{ marginTop: '1.2rem' }}>
+            <div className="form-field">
+              <label>Name</label>
+              <input
+                type="text"
+                value={newEmployee.name}
+                onChange={(e) => setNewEmployee({ ...newEmployee, name: e.target.value })}
+                className="input"
+                placeholder="Employee name"
+                required
+              />
+            </div>
+            <div className="form-field">
+              <label>Base Salary (Kip)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={newEmployee.salary}
+                onChange={(e) => setNewEmployee({ ...newEmployee, salary: e.target.value })}
+                className="input"
+                placeholder="e.g. 1200000"
+                required
+              />
+            </div>
+            <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }}>
+              Add Employee
+            </button>
+          </form>
+        </div>
 
-      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-        <h2 className="text-xl font-semibold mb-4">Search Employees</h2>
-        <div className="flex space-x-2">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by name..."
-            className="flex-1 border border-gray-300 rounded-md px-3 py-2"
-          />
-          <button
-            onClick={searchEmployees}
-            className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
-          >
-            Search
-          </button>
-          <button
-            onClick={fetchEmployees}
-            className="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600"
-          >
-            Show All
-          </button>
+        <div className="card">
+          <h2 className="section-title">Search Directory</h2>
+          <div className="form-grid" style={{ marginTop: '1.2rem' }}>
+            <div className="form-field">
+              <label>Search by name</label>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by name..."
+                className="input"
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
+              <button onClick={searchEmployees} className="btn btn-outline">Search</button>
+              <button onClick={fetchEmployees} className="btn btn-ghost">Show All</button>
+            </div>
+          </div>
+          <div className="divider" />
+          <div className="stat">
+            <span className="stat-value">{employees.length}</span>
+            <span className="stat-label">Visible Employees</span>
+          </div>
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold mb-4">Employees</h2>
+      <div className="card card-glass" style={{ marginTop: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem' }}>
+          <h2 className="section-title">Active Employees</h2>
+          <span className="pill">Roster</span>
+        </div>
         {employees.length === 0 ? (
-          <p className="text-gray-500">No employees found.</p>
+          <p className="muted">No employees found.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full table-auto">
+            <table className="table">
               <thead>
-                <tr className="bg-gray-100">
-                  <th className="px-4 py-2 text-left">ID</th>
-                  <th className="px-4 py-2 text-left">Name</th>
-                  <th className="px-4 py-2 text-left">Salary</th>
-                  <th className="px-4 py-2 text-left">Created</th>
-                  <th className="px-4 py-2 text-left">Actions</th>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Salary</th>
+                  <th>Created</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {employees.map((employee) => (
-                  <tr key={employee.id} className="border-b">
-                    <td className="px-4 py-2">{employee.id}</td>
-                    <td className="px-4 py-2">{employee.name}</td>
-                    <td className="px-4 py-2">${employee.base_salary}</td>
-                    <td className="px-4 py-2"> </td>
-                    <td className="px-4 py-2">
+                {employees.map((employee, index) => (
+                  <tr key={employee.id} className={index % 2 === 0 ? 'table-row-highlight' : ''}>
+                    <td>{employee.id}</td>
+                    <td>{employee.name}</td>
+                    <td>{employee.base_salary.toLocaleString()}</td>
+                    <td className="muted">—</td>
+                    <td>
                       <button
                         onClick={() => deleteEmployee(employee.id)}
-                        className="bg-red-500 text-white px-3 py-1 rounded-md hover:bg-red-600 text-sm"
+                        className="btn btn-outline"
+                        style={{ borderColor: 'rgba(255, 107, 107, 0.4)', color: 'var(--danger)' }}
                       >
                         Delete
                       </button>

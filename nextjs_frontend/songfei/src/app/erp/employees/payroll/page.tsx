@@ -57,84 +57,106 @@ export default function EmployeePayrollPage() {
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6">Monthly Salary Calculation</h1>
+    <div>
+      <div className="kicker">Payroll Ops</div>
+      <h1 className="hero-title" style={{ fontSize: 'clamp(2rem, 4vw, 3rem)' }}>Close payroll with confidence.</h1>
+      <p className="hero-copy">
+        Upload attendance sheets, validate totals, and export payroll summaries in minutes.
+      </p>
 
-      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-        <h2 className="text-xl font-semibold mb-4">Upload Attendance Sheet</h2>
-        <form onSubmit={uploadAttendance} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Attendance .xls File</label>
-            <input
-              type="file"
-              accept=".xls,.xlsx"
-              onChange={(e) => setAttendanceFile(e.target.files?.[0] || null)}
-              className="mt-1 block w-full"
-              required
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Month</label>
+      <div className="split-layout" style={{ marginTop: '2rem' }}>
+        <div className="card card-glass">
+          <h2 className="section-title">Upload Attendance Sheet</h2>
+          <form onSubmit={uploadAttendance} className="form-grid" style={{ marginTop: '1.2rem' }}>
+            <div className="form-field">
+              <label>Attendance .xls File</label>
               <input
-                type="number"
-                min={1}
-                max={12}
-                value={uploadMonth}
-                onChange={(e) => setUploadMonth(Number(e.target.value))}
-                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                type="file"
+                accept=".xls,.xlsx"
+                onChange={(e) => setAttendanceFile(e.target.files?.[0] || null)}
+                className="input"
+                required
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Year</label>
-              <input
-                type="number"
-                value={uploadYear}
-                onChange={(e) => setUploadYear(Number(e.target.value))}
-                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-              />
+            <div className="grid-2">
+              <div className="form-field">
+                <label>Month</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={uploadMonth}
+                  onChange={(e) => setUploadMonth(Number(e.target.value))}
+                  className="input"
+                />
+              </div>
+              <div className="form-field">
+                <label>Year</label>
+                <input
+                  type="number"
+                  value={uploadYear}
+                  onChange={(e) => setUploadYear(Number(e.target.value))}
+                  className="input"
+                />
+              </div>
             </div>
-          </div>
-          <button
-            type="submit"
-            disabled={isUploading}
-            className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 disabled:opacity-60"
-          >
-            {isUploading ? 'Uploading...' : 'Upload & Calculate Payroll'}
-          </button>
-        </form>
+            <button type="submit" disabled={isUploading} className="btn btn-primary" style={{ justifyContent: 'center' }}>
+              {isUploading ? 'Uploading...' : 'Upload & Calculate Payroll'}
+            </button>
+          </form>
+        </div>
 
-        {payrollMeta && (
-          <div className="mt-4 text-sm text-gray-700">
-            Payroll Period: {payrollMeta.year}-{String(payrollMeta.month).padStart(2, '0')} | Working Days: {payrollMeta.working_days}
-          </div>
-        )}
+        <div className="card floating-panel">
+          <div className="pill">Summary</div>
+          <h2 className="section-title" style={{ marginTop: '1rem' }}>Payroll Period</h2>
+          {payrollMeta ? (
+            <div className="form-grid" style={{ marginTop: '1.2rem' }}>
+              <div className="stat">
+                <span className="stat-value">{payrollMeta.year}</span>
+                <span className="stat-label">Year</span>
+              </div>
+              <div className="stat">
+                <span className="stat-value">{String(payrollMeta.month).padStart(2, '0')}</span>
+                <span className="stat-label">Month</span>
+              </div>
+              <div className="stat">
+                <span className="stat-value">{payrollMeta.working_days}</span>
+                <span className="stat-label">Working Days</span>
+              </div>
+            </div>
+          ) : (
+            <p className="muted" style={{ marginTop: '1rem' }}>Upload a sheet to populate payroll summary.</p>
+          )}
+        </div>
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold mb-4">Monthly Payroll Results</h2>
+      <div className="card card-glass" style={{ marginTop: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <h2 className="section-title">Monthly Payroll Results</h2>
+          <span className="pill">Report</span>
+        </div>
         {payrollResults.length === 0 ? (
-          <p className="text-gray-500">No payroll results yet. Upload an attendance sheet to calculate.</p>
+          <p className="muted">No payroll results yet. Upload an attendance sheet to calculate.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full table-auto">
+            <table className="table">
               <thead>
-                <tr className="bg-gray-100">
-                  <th className="px-4 py-2 text-left">Employee ID</th>
-                  <th className="px-4 py-2 text-left">Name</th>
-                  <th className="px-4 py-2 text-left">Valid Days</th>
-                  <th className="px-4 py-2 text-left">Working Days</th>
-                  <th className="px-4 py-2 text-left">Monthly Salary (Kip)</th>
+                <tr>
+                  <th>Employee ID</th>
+                  <th>Name</th>
+                  <th>Valid Days</th>
+                  <th>Working Days</th>
+                  <th>Monthly Salary (Kip)</th>
                 </tr>
               </thead>
               <tbody>
                 {payrollResults.map((result, index) => (
-                  <tr key={`${result.employee_id}-${index}`} className="border-b">
-                    <td className="px-4 py-2">{result.employee_id || '-'}</td>
-                    <td className="px-4 py-2">{result.employee_name || '-'}</td>
-                    <td className="px-4 py-2">{result.valid_days}</td>
-                    <td className="px-4 py-2">{result.working_days}</td>
-                    <td className="px-4 py-2">{result.monthly_salary.toLocaleString()}</td>
+                  <tr key={`${result.employee_id}-${index}`} className={index % 2 === 0 ? 'table-row-highlight' : ''}>
+                    <td>{result.employee_id || '-'}</td>
+                    <td>{result.employee_name || '-'}</td>
+                    <td>{result.valid_days}</td>
+                    <td>{result.working_days}</td>
+                    <td>{result.monthly_salary.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>

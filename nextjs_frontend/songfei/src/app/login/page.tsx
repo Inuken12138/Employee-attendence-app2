@@ -25,11 +25,61 @@ export default function LoginPage() {
   };
 
   return (
-    <form onSubmit={handleLogin} style={{ padding: '2rem' }}>
-      <h1>Login</h1>
-      <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" required /><br />
-      <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" required /><br />
-      <button type="submit">Login</button>
-    </form>
+    <div className="hero">
+      <div className="card card-glass">
+        <div className="pill">Secure Access</div>
+        <h1 className="section-title" style={{ marginTop: '1rem' }}>Welcome back to Songfei</h1>
+        <p className="muted">
+          Sign in to manage inventory movements, payroll approvals, and operational snapshots.
+        </p>
+        <form onSubmit={handleLogin} className="form-grid" style={{ marginTop: '1.8rem' }}>
+          <div className="form-field">
+            <label>Username</label>
+            <input
+              className="input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. operations_admin"
+              required
+            />
+          </div>
+          <div className="form-field">
+            <label>Password</label>
+            <input
+              className="input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </div>
+          <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }}>
+            Sign in
+          </button>
+        </form>
+      </div>
+      <div className="card">
+        <div className="pill">Quick Actions</div>
+        <h2 className="section-title" style={{ marginTop: '1rem' }}>Need instant access?</h2>
+        <p className="muted">
+          Launch the ERP to review inventory thresholds or upload attendance sheets once authenticated.
+        </p>
+        <div className="divider" />
+        <div className="grid-2">
+          <div className="stat">
+            <span className="stat-value">98%</span>
+            <span className="stat-label">On-time Logs</span>
+          </div>
+          <div className="stat">
+            <span className="stat-value">6m</span>
+            <span className="stat-label">Avg Check-in</span>
+          </div>
+        </div>
+        <div style={{ marginTop: '1.6rem' }}>
+          <a className="btn btn-outline" href="/erp">Go to ERP overview</a>
+        </div>
+      </div>
+    </div>
   );
 }

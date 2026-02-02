@@ -35,7 +35,7 @@ Current Implementation
 """
 
 from rest_framework import serializers
-from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile
+from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category
 
 class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -63,10 +63,61 @@ class InventoryItemSerializer(serializers.ModelSerializer):
     def get_inventory_condition(self, obj):
         return 'requiring restock' if obj.quantity < obj.least_inventory_amount else 'normal'
 
+class CategorySerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    breadcrumb = serializers.SerializerMethodField()
+    children_count = serializers.SerializerMethodField()
+    level = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'slug', 'image', 'image_url', 'parent', 'display_order', 'breadcrumb', 'children_count', 'level']
+
+    def get_image_url(self, obj):
+        if obj.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
+
+    def get_breadcrumb(self, obj):
+        return obj.get_breadcrumb()
+
+    def get_children_count(self, obj):
+        return obj.children.count()
+
+    def get_level(self, obj):
+        return obj.get_level()
+
+
 class ProductSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    category_slug = serializers.CharField(source='category.slug', read_only=True)
+
     class Meta:
         model = Product
-        fields = '__all__'
+        fields = [
+            'id', 'product_id', 'name', 'price', 'description', 'category', 'category_name', 'category_slug',
+            'slug', 'image', 'image_url', 'colour', 'material', 'is_best_seller', 'is_new'
+        ]
+
+    def get_image_url(self, obj):
+        if obj.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
+
+    def validate_product_id(self, value):
+        """Validate that product_id is unique"""
+        if self.instance and self.instance.product_id == value:
+            return value
+        if Product.objects.filter(product_id=value).exists():
+            raise serializers.ValidationError("A product with this product_id already exists.")
+        return value
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:

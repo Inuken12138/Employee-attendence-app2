@@ -102,9 +102,11 @@ How to extend:
 # default imports
 from django.shortcuts import render
 
-from rest_framework import viewsets, permissions, generics
-from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile
-from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer, WorkplaceSerializer, EmployeeFaceProfileSerializer
+from rest_framework import viewsets, permissions, generics, filters
+from rest_framework.decorators import action
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category
+from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer, WorkplaceSerializer, EmployeeFaceProfileSerializer, CategorySerializer
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -134,9 +136,78 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
     permission_classes = []
     parser_classes = [MultiPartParser, FormParser]
 
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = []
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        queryset = Category.objects.all()
+        slug = self.request.query_params.get('slug', None)
+        parent = self.request.query_params.get('parent', None)
+        
+        if slug:
+            queryset = queryset.filter(slug=slug)
+        
+        if parent == 'null' or parent == '':
+            queryset = queryset.filter(parent__isnull=True)
+        elif parent:
+            try:
+                parent_id = int(parent)
+                queryset = queryset.filter(parent_id=parent_id)
+            except ValueError:
+                pass
+        return queryset.order_by('display_order', 'name')
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
+    permission_classes = []
+    parser_classes = [MultiPartParser, FormParser]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['category', 'colour', 'material', 'is_best_seller', 'is_new']
+    search_fields = ['name', 'description', 'product_id']
+    ordering_fields = ['name', 'price']
+    ordering = ['name']
+
+    def get_queryset(self):
+        queryset = Product.objects.all()
+        category_slug = self.request.query_params.get('category_slug', None)
+        include_descendants = self.request.query_params.get('include_descendants', 'false').lower() == 'true'
+
+        if category_slug:
+            try:
+                category = Category.objects.get(slug=category_slug)
+                if include_descendants:
+                    # Get category and all its descendants
+                    category_ids = [category.id] + [c.id for c in category.get_all_descendants()]
+                    queryset = queryset.filter(category_id__in=category_ids)
+                else:
+                    queryset = queryset.filter(category=category)
+            except Category.DoesNotExist:
+                queryset = queryset.none()
+
+        return queryset
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+    def perform_create(self, serializer):
+        # Validate product_id uniqueness
+        product_id = serializer.validated_data.get('product_id')
+        if Product.objects.filter(product_id=product_id).exists():
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'product_id': 'A product with this product_id already exists.'})
+        serializer.save()
 
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all()
