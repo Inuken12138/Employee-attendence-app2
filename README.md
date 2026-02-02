@@ -1,5 +1,7 @@
 # Get started
 
+> 📖 For detailed automation script documentation, see [AUTOMATION.md](AUTOMATION.md)
+
 ## Quick Start (Automated)
 
 **Start all services with a single command:**
