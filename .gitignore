@@ -61,3 +61,10 @@ Thumbs.db
 
 # Ignore the test directory
 test/
+
+# -----------------------------
+# Startup script files
+# -----------------------------
+.backend.pid
+.frontend.pid
+logs/

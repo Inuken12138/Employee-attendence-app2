@@ -1,13 +1,79 @@
 # Get started
 
-# Activate virtual environment
+> 📖 For detailed automation script documentation, see [AUTOMATION.md](AUTOMATION.md)
+
+## Quick Start (Automated)
+
+**Start all services with a single command:**
+
+    ./start.sh
+
+This will automatically:
+- Activate the virtual environment
+- Start PostgreSQL
+- Start the Django backend server (http://localhost:8000/)
+- Start the Next.js frontend server (http://localhost:3000/)
+
+**Stop all services:**
+
+    ./stop.sh
+
+This will gracefully stop the backend and frontend servers, and optionally stop PostgreSQL.
+
+**View logs:**
+
+    tail -f logs/backend.log    # Django backend logs
+    tail -f logs/frontend.log   # Next.js frontend logs
+
+### Troubleshooting
+
+If you encounter issues with the automated startup:
+
+1. **Permission denied error**: Make sure the scripts are executable:
+   ```
+   chmod +x start.sh stop.sh
+   ```
+
+2. **Virtual environment not found**: Create and set up the virtual environment first:
+   ```
+   python3 -m venv .songfeiVENV
+   source .songfeiVENV/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. **PostgreSQL connection issues**: Make sure PostgreSQL is running and the database is set up:
+   ```
+   sudo service postgresql status
+   ```
+
+4. **Port already in use**: Check if services are already running:
+   ```
+   # Check if backend is running on port 8000
+   lsof -i :8000
+   # Check if frontend is running on port 3000
+   lsof -i :3000
+   ```
+
+5. **View real-time logs**: If services don't start properly, check the logs:
+   ```
+   tail -f logs/backend.log
+   tail -f logs/frontend.log
+   ```
+
+---
+
+## Manual Start (Traditional Method)
+
+If you prefer to start services manually:
+
+### Activate virtual environment
 
     source .songfeiVENV/bin/activate
 
-# Start Postgres once per WSL session
+### Start Postgres once per WSL session
     sudo service postgresql start
 
-# Start the backend
+### Start the backend
 
     cd ~/project/songfei/Employee attendence app2\django_backend
     
@@ -20,7 +86,7 @@
     # Access from your browser at: http://localhost:8000/ 
     # Admin site will be at http://localhost:8000/admin
 
-# Start the front end
+### Start the front end
 
     cd ~/project/songfei/Employee\ attendence\ app2/nextjs_frontend/songfei
     npm run dev
@@ -111,6 +177,11 @@ email = luorenhua.com@gmail.com
 password = laowewanxiang
 
 # How to gracefully stop all services
+
+## Quick Stop (Automated)
+    ./stop.sh
+
+## Manual Stop
 1. Ctrl + C in the next.js terminal
 2. Ctrl + C in the django terminal
 3. In the same django terminal, type `deactivate`
