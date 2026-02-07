@@ -34,13 +34,13 @@ export default function InventoryDetailPage() {
         const response = await fetch(`http://localhost:8000/api/inventory/${itemId}/`);
         const data = await response.json();
         setItem(data);
-      } catch (error) {
+      } catch {
         showErrorPopup('Error fetching inventory item.');
       }
     };
 
     fetchItem();
-  }, [itemId]);
+  }, [itemId, showErrorPopup]);
 
   const getImageSrc = (image?: string | null) => {
     if (!image) {
@@ -74,7 +74,7 @@ export default function InventoryDetailPage() {
       const updated = await response.json();
       setItem(updated);
       setNewImage(null);
-    } catch (error) {
+    } catch {
       showErrorPopup('Failed to update image.');
     } finally {
       setIsUploading(false);

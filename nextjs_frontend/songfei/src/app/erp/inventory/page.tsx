@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import useErrorPopup from '../../hooks/useErrorPopup';
 
@@ -27,19 +27,19 @@ export default function InventoryPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const { showErrorPopup } = useErrorPopup();
 
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async () => {
     try {
       const response = await fetch('http://localhost:8000/api/inventory/');
       const data = await response.json();
       setItems(data);
-    } catch (error) {
+    } catch {
       showErrorPopup('Error fetching inventory.');
     }
-  };
+  }, [showErrorPopup]);
 
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [fetchItems]);
 
   const getImageSrc = (image?: string | null) => {
     if (!image) {
@@ -86,7 +86,7 @@ export default function InventoryPage() {
       setImageFile(null);
       setShowForm(false);
       fetchItems();
-    } catch (error) {
+    } catch {
       showErrorPopup('Failed to create inventory item.');
     }
   };
@@ -104,7 +104,7 @@ export default function InventoryPage() {
         return;
       }
       fetchItems();
-    } catch (error) {
+    } catch {
       showErrorPopup('Failed to delete inventory item.');
     }
   };

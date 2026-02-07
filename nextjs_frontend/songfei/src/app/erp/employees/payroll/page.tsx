@@ -50,7 +50,7 @@ export default function EmployeePayrollPage() {
         month: data.month,
         working_days: data.working_days,
       });
-    } catch (error) {
+    } catch {
       showErrorPopup('Failed to upload attendance sheet.');
     } finally {
       setIsUploading(false);

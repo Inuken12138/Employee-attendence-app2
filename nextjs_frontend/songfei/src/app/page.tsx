@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import CategorySlider from './components/CategorySlider';
 
 export default function HomePage() {
@@ -11,8 +12,8 @@ export default function HomePage() {
             Discover quality products for your home and business. Browse our curated selection and find exactly what you need.
           </p>
           <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem', flexWrap: 'wrap' }}>
-            <a className="btn btn-primary" href="/cat/products-products">Browse All Products</a>
-            <a className="btn btn-outline" href="/products">Search Products</a>
+            <Link className="btn btn-primary" href="/cat/products-products">Browse All Products</Link>
+            <Link className="btn btn-outline" href="/products">Search Products</Link>
           </div>
         </div>
         <div className="card card-glass">

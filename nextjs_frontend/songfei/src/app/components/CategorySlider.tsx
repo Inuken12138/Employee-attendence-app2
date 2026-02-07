@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import useErrorPopup from '../hooks/useErrorPopup';
 
 interface Category {
@@ -24,11 +23,11 @@ export default function CategorySlider() {
         setCategories(data);
         setLoading(false);
       })
-      .catch(err => {
+      .catch(() => {
         showErrorPopup('Error fetching categories.');
         setLoading(false);
       });
-  }, []);
+  }, [showErrorPopup]);
 
   if (loading) {
     return <div className="muted">Loading categories...</div>;

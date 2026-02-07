@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import useErrorPopup from '../../hooks/useErrorPopup';
 
 interface Category {
@@ -18,6 +18,21 @@ interface SelectedCategory {
   image_url?: string | null;
 }
 
+interface Product {
+  id: number;
+  product_id: string;
+  name: string;
+  price: number;
+  description?: string;
+  category: number | null;
+  category_name?: string | null;
+  image_url?: string | null;
+  colour?: string;
+  material?: string;
+  is_best_seller: boolean;
+  is_new: boolean;
+}
+
 export default function ManageProducts() {
   const [rootCategories, setRootCategories] = useState<Category[]>([]);
   const [currentCategories, setCurrentCategories] = useState<Category[]>([]);
@@ -31,6 +46,28 @@ export default function ManageProducts() {
   const [categoryImageUpdating, setCategoryImageUpdating] = useState(false);
   const [categoryImageError, setCategoryImageError] = useState<string | null>(null);
   const [categoryImageSuccess, setCategoryImageSuccess] = useState<string | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [productSearch, setProductSearch] = useState('');
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editForm, setEditForm] = useState({
+    product_id: '',
+    name: '',
+    price: '',
+    description: '',
+    category: '',
+    colour: '',
+    material: '',
+    is_best_seller: false,
+    is_new: false,
+  });
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
+  const [editRemoveImage, setEditRemoveImage] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<number | null>(null);
   const [productForm, setProductForm] = useState({
     product_id: '',
     name: '',
@@ -47,6 +84,9 @@ export default function ManageProducts() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const { showErrorPopup } = useErrorPopup();
+
+  const getErrorMessage = (err: unknown, fallback: string) =>
+    err instanceof Error ? err.message : fallback;
 
   const convertImageToJpegOrPng = async (file: File): Promise<File> => {
     if (file.type === 'image/jpeg' || file.type === 'image/png') {
@@ -101,7 +141,57 @@ export default function ManageProducts() {
         const message = err?.message || 'Error fetching categories';
         showErrorPopup(message);
       });
+  }, [showErrorPopup]);
+
+  const selectedCategoryId = selectedPath.length > 0 ? selectedPath[selectedPath.length - 1].id : null;
+
+  const selectedCategoryName = selectedPath.length > 0 ? selectedPath[selectedPath.length - 1].name : null;
+
+  const selectedCategorySlug = selectedPath.length > 0 ? selectedPath[selectedPath.length - 1].slug : null;
+
+  const normalizeProductList = useCallback((data: unknown): Product[] => {
+    if (Array.isArray(data)) return data as Product[];
+    if (Array.isArray((data as { results?: unknown[] })?.results)) {
+      return (data as { results: Product[] }).results;
+    }
+    return [];
   }, []);
+
+  const fetchProducts = useCallback(async (categorySlug: string, searchTerm?: string) => {
+    setProductsLoading(true);
+    setProductsError(null);
+
+    try {
+      const params = new URLSearchParams();
+      params.set('category_slug', categorySlug);
+      params.set('include_descendants', 'true');
+      if (searchTerm?.trim()) {
+        params.set('search', searchTerm.trim());
+      }
+
+      const res = await fetch(`http://localhost:8000/api/products/?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error('Failed to fetch products');
+      }
+      const data = await res.json();
+      setProducts(normalizeProductList(data));
+    } catch (err: unknown) {
+      setProductsError(getErrorMessage(err, 'Failed to fetch products'));
+      setProducts([]);
+    } finally {
+      setProductsLoading(false);
+    }
+  }, [normalizeProductList]);
+
+  useEffect(() => {
+    if (selectedCategorySlug) {
+      fetchProducts(selectedCategorySlug);
+    } else {
+      setProducts([]);
+      setProductsError(null);
+      setEditingProduct(null);
+    }
+  }, [fetchProducts, selectedCategorySlug]);
 
   const handleCategorySelect = (category: Category) => {
     setSelectedPath([
@@ -197,8 +287,8 @@ export default function ManageProducts() {
       setNewCategoryImageFile(null);
       setNewCategoryImagePreview(null);
       setError(null);
-    } catch (err: any) {
-      const message = err.message || 'Failed to create subcategory';
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to create subcategory');
       setError(message);
       showErrorPopup(message);
     }
@@ -216,8 +306,8 @@ export default function ManageProducts() {
         setNewCategoryImagePreview(reader.result as string);
       };
       reader.readAsDataURL(converted);
-    } catch (err: any) {
-      const message = err.message || 'Failed to process image';
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to process image');
       setError(message);
       showErrorPopup(message);
     }
@@ -267,8 +357,8 @@ export default function ManageProducts() {
       setCurrentCategories(prev => prev.map(cat => (cat.id === updated.id ? updated : cat)));
       setCategoryImageSuccess(file ? 'Category image updated.' : 'Category image removed.');
       setTimeout(() => setCategoryImageSuccess(null), 3000);
-    } catch (err: any) {
-      const message = err.message || 'Failed to update category image';
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to update category image');
       setCategoryImageError(message);
       showErrorPopup(message);
     } finally {
@@ -288,10 +378,158 @@ export default function ManageProducts() {
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(converted);
-    } catch (err: any) {
-      const message = err.message || 'Failed to process image';
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to process image');
       setError(message);
       showErrorPopup(message);
+    }
+  };
+
+  const handleEditImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const converted = await convertImageToJpegOrPng(file);
+      setEditImageFile(converted);
+      setEditRemoveImage(false);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(converted);
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to process image');
+      setEditError(message);
+      showErrorPopup(message);
+    }
+  };
+
+  const startEditProduct = (product: Product) => {
+    setEditingProduct(product);
+    setEditForm({
+      product_id: product.product_id,
+      name: product.name,
+      price: product.price?.toString() || '',
+      description: product.description || '',
+      category: product.category ? product.category.toString() : '',
+      colour: product.colour || '',
+      material: product.material || '',
+      is_best_seller: product.is_best_seller,
+      is_new: product.is_new,
+    });
+    setEditImageFile(null);
+    setEditRemoveImage(false);
+    setEditImagePreview(product.image_url || null);
+    setEditError(null);
+  };
+
+  const handleEditCancel = () => {
+    setEditingProduct(null);
+    setEditError(null);
+    setEditImageFile(null);
+    setEditImagePreview(null);
+    setEditRemoveImage(false);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!editingProduct) return;
+
+    if (!editForm.product_id.trim()) {
+      const message = 'Product ID is required';
+      setEditError(message);
+      showErrorPopup(message);
+      return;
+    }
+
+    setEditSaving(true);
+    setEditError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('product_id', editForm.product_id);
+      formData.append('name', editForm.name);
+      formData.append('price', editForm.price);
+      formData.append('description', editForm.description);
+      if (editForm.category) {
+        formData.append('category', editForm.category);
+      }
+      formData.append('colour', editForm.colour);
+      formData.append('material', editForm.material);
+      formData.append('is_best_seller', editForm.is_best_seller.toString());
+      formData.append('is_new', editForm.is_new.toString());
+
+      if (editRemoveImage) {
+        formData.append('image', '');
+      } else if (editImageFile) {
+        formData.append('image', editImageFile);
+      }
+
+      const res = await fetch(`http://localhost:8000/api/products/${editingProduct.id}/`, {
+        method: 'PATCH',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        const message =
+          errorData.image?.[0] ||
+          errorData.product_id?.[0] ||
+          errorData.non_field_errors?.[0] ||
+          errorData.detail ||
+          'Failed to update product';
+        throw new Error(message);
+      }
+
+      const updated = await res.json();
+      setProducts(prev => prev.map(item => (item.id === updated.id ? updated : item)));
+      setEditingProduct(updated);
+      setEditImageFile(null);
+      setEditRemoveImage(false);
+      setEditImagePreview(updated.image_url || null);
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to update product');
+      setEditError(message);
+      showErrorPopup(message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleDeleteProduct = async (product: Product) => {
+    const confirmed = window.confirm(`Delete ${product.name}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setDeleteLoadingId(product.id);
+
+    try {
+      const res = await fetch(`http://localhost:8000/api/products/${product.id}/`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        const message = errorData.detail || 'Failed to delete product';
+        throw new Error(message);
+      }
+
+      setProducts(prev => prev.filter(item => item.id !== product.id));
+      if (editingProduct?.id === product.id) {
+        handleEditCancel();
+      }
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to delete product');
+      showErrorPopup(message);
+    } finally {
+      setDeleteLoadingId(null);
+    }
+  };
+
+  const handleProductSearch = () => {
+    if (selectedCategorySlug) {
+      fetchProducts(selectedCategorySlug, productSearch);
     }
   };
 
@@ -301,7 +539,8 @@ export default function ManageProducts() {
     try {
       const res = await fetch(`http://localhost:8000/api/products/?product_id=${productId}`);
       const data = await res.json();
-      return data.length === 0; // True if no product exists with this ID
+      const list = normalizeProductList(data);
+      return list.length === 0; // True if no product exists with this ID
     } catch {
       return true; // Assume valid if check fails
     }
@@ -384,12 +623,13 @@ export default function ManageProducts() {
       });
       setImageFile(null);
       setImagePreview(null);
-      setSelectedPath([]);
-      setCurrentCategories(rootCategories);
+      if (selectedCategorySlug) {
+        fetchProducts(selectedCategorySlug);
+      }
       
       setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      const message = err.message || 'Failed to create product';
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, 'Failed to create product');
       setError(message);
       showErrorPopup(message);
     } finally {
@@ -841,6 +1081,328 @@ export default function ManageProducts() {
             </div>
           </form>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+          <div>
+            <h3 style={{ marginBottom: '0.25rem' }}>Products</h3>
+            <div className="muted" style={{ fontSize: '0.9rem' }}>
+              {selectedCategoryName ? `Showing products in ${selectedCategoryName}` : 'Select a category to view products.'}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => selectedCategorySlug && fetchProducts(selectedCategorySlug, productSearch)}
+            disabled={!selectedCategorySlug || productsLoading}
+          >
+            {productsLoading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            className="input"
+            placeholder="Search products"
+            value={productSearch}
+            onChange={(e) => setProductSearch(e.target.value)}
+            style={{ flex: '1 1 220px' }}
+            disabled={!selectedCategorySlug}
+          />
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleProductSearch}
+            disabled={!selectedCategorySlug || productsLoading}
+          >
+            Search
+          </button>
+        </div>
+
+        {productsError && (
+          <div style={{
+            padding: '0.8rem',
+            backgroundColor: 'rgba(255, 107, 107, 0.15)',
+            border: '1px solid var(--danger)',
+            borderRadius: 'var(--radius-sm)',
+            marginBottom: '1rem',
+            color: 'var(--danger)',
+          }}>
+            {productsError}
+          </div>
+        )}
+
+        {!selectedCategorySlug ? (
+          <div className="muted" style={{ padding: '1rem', textAlign: 'center' }}>
+            Select a category to manage products.
+          </div>
+        ) : productsLoading ? (
+          <div className="muted" style={{ padding: '1rem', textAlign: 'center' }}>
+            Loading products...
+          </div>
+        ) : products.length === 0 ? (
+          <div className="muted" style={{ padding: '1rem', textAlign: 'center' }}>
+            No products found in this category.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--edge)' }}>
+                  <th style={{ padding: '0.6rem' }}>Image</th>
+                  <th style={{ padding: '0.6rem' }}>Product ID</th>
+                  <th style={{ padding: '0.6rem' }}>Name</th>
+                  <th style={{ padding: '0.6rem' }}>Price</th>
+                  <th style={{ padding: '0.6rem' }}>Flags</th>
+                  <th style={{ padding: '0.6rem' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => (
+                  <tr key={product.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <td style={{ padding: '0.6rem' }}>
+                      <div style={{ width: '56px', height: '56px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', backgroundColor: 'rgba(245, 242, 234, 0.08)' }}>
+                        {product.image_url ? (
+                          <img
+                            src={product.image_url}
+                            alt={product.name}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : null}
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.6rem', fontWeight: 600 }}>{product.product_id}</td>
+                    <td style={{ padding: '0.6rem' }}>{product.name}</td>
+                    <td style={{ padding: '0.6rem' }}>¥{Number(product.price).toFixed(2)}</td>
+                    <td style={{ padding: '0.6rem', color: 'var(--ink-3)', fontSize: '0.85rem' }}>
+                      {product.is_best_seller ? 'Best seller' : ''}
+                      {product.is_best_seller && product.is_new ? ' · ' : ''}
+                      {product.is_new ? 'New' : ''}
+                    </td>
+                    <td style={{ padding: '0.6rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button type="button" className="btn btn-outline" onClick={() => startEditProduct(product)}>
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => handleDeleteProduct(product)}
+                          disabled={deleteLoadingId === product.id}
+                        >
+                          {deleteLoadingId === product.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {editingProduct && (
+          <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--edge)' }}>
+            <h4 style={{ marginBottom: '1rem' }}>Edit product</h4>
+
+            {editError && (
+              <div style={{
+                padding: '0.8rem',
+                backgroundColor: 'rgba(255, 107, 107, 0.15)',
+                border: '1px solid var(--danger)',
+                borderRadius: 'var(--radius-sm)',
+                marginBottom: '1rem',
+                color: 'var(--danger)',
+              }}>
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleEditSubmit}>
+              <div className="form-grid">
+                <div className="form-field">
+                  <label>Product ID *</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={editForm.product_id}
+                    onChange={(e) => setEditForm({ ...editForm, product_id: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label>Category</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      className="input"
+                      value={editingProduct.category_name || 'Unassigned'}
+                      readOnly
+                      style={{ backgroundColor: 'rgba(245, 242, 234, 0.05)' }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      onClick={() => {
+                        if (selectedCategoryId) {
+                          setEditForm({ ...editForm, category: selectedCategoryId.toString() });
+                        }
+                      }}
+                      disabled={!selectedCategoryId}
+                    >
+                      Use selected
+                    </button>
+                  </div>
+                  {selectedCategoryName && (
+                    <div className="muted" style={{ fontSize: '0.8rem', marginTop: '0.3rem' }}>
+                      Selected category: {selectedCategoryName}
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-field">
+                  <label>Name *</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label>Price *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={editForm.price}
+                    onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label>Description</label>
+                  <textarea
+                    className="textarea"
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                    rows={4}
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label>Image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleEditImageChange}
+                    style={{ marginBottom: '0.5rem' }}
+                  />
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      onClick={() => {
+                        setEditImageFile(null);
+                        setEditRemoveImage(true);
+                        setEditImagePreview(null);
+                      }}
+                    >
+                      Remove image
+                    </button>
+                  </div>
+                  {editImagePreview ? (
+                    <div style={{
+                      width: '150px',
+                      height: '150px',
+                      borderRadius: 'var(--radius-sm)',
+                      overflow: 'hidden',
+                      marginTop: '0.5rem',
+                    }}>
+                      <img
+                        src={editImagePreview}
+                        alt="Preview"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{
+                      width: '150px',
+                      height: '150px',
+                      backgroundColor: 'rgba(245, 242, 234, 0.12)',
+                      borderRadius: 'var(--radius-sm)',
+                      marginTop: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--ink-3)',
+                      fontSize: '0.85rem',
+                    }}>
+                      No image
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-field">
+                  <label>Colour</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={editForm.colour}
+                    onChange={(e) => setEditForm({ ...editForm, colour: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label>Material</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={editForm.material}
+                    onChange={(e) => setEditForm({ ...editForm, material: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={editForm.is_best_seller}
+                      onChange={(e) => setEditForm({ ...editForm, is_best_seller: e.target.checked })}
+                    />
+                    Best seller
+                  </label>
+                </div>
+
+                <div className="form-field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={editForm.is_new}
+                      onChange={(e) => setEditForm({ ...editForm, is_new: e.target.checked })}
+                    />
+                    New product
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                <button type="submit" className="btn btn-primary" disabled={editSaving}>
+                  {editSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button type="button" className="btn btn-outline" onClick={handleEditCancel}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );

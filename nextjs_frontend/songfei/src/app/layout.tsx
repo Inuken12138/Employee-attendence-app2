@@ -1,5 +1,4 @@
 import React, { ReactNode } from 'react';
-import Link from 'next/link';
 import { Literata, Unbounded } from 'next/font/google';
 import './globals.css';
 import ConditionalHeader from './components/ConditionalHeader';

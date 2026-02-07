@@ -77,11 +77,11 @@ export default function CategoryPage() {
 
         setLoading(false);
       })
-      .catch(err => {
+      .catch(() => {
         showErrorPopup('Error fetching category.');
         setLoading(false);
       });
-  }, [slug]);
+  }, [showErrorPopup, slug]);
 
   if (loading) {
     return <div className="muted" style={{ padding: '2rem' }}>Loading...</div>;

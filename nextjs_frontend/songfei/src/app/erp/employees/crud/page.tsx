@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import useErrorPopup from '../../../hooks/useErrorPopup';
 
 interface Employee {
@@ -14,15 +14,15 @@ export default function EmployeeCrudPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const { showErrorPopup } = useErrorPopup();
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = useCallback(async () => {
     try {
       const response = await fetch('http://localhost:8000/api/employees/');
       const data = await response.json();
       setEmployees(data);
-    } catch (error) {
+    } catch {
       showErrorPopup('Error fetching employees.');
     }
-  };
+  }, [showErrorPopup]);
 
   const createEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +42,7 @@ export default function EmployeeCrudPage() {
         setNewEmployee({ name: '', salary: '' });
         fetchEmployees();
       }
-    } catch (error) {
+    } catch {
       showErrorPopup('Error creating employee.');
     }
   };
@@ -52,7 +52,7 @@ export default function EmployeeCrudPage() {
       const response = await fetch(`http://localhost:8000/api/search/?name=${searchTerm}`);
       const data = await response.json();
       setEmployees(data);
-    } catch (error) {
+    } catch {
       showErrorPopup('Error searching employees.');
     }
   };
@@ -67,7 +67,7 @@ export default function EmployeeCrudPage() {
         if (response.ok) {
           fetchEmployees();
         }
-      } catch (error) {
+      } catch {
         showErrorPopup('Error deleting employee.');
       }
     }
@@ -75,7 +75,7 @@ export default function EmployeeCrudPage() {
 
   useEffect(() => {
     fetchEmployees();
-  }, []);
+  }, [fetchEmployees]);
 
   return (
     <div>

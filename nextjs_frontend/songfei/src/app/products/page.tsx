@@ -36,7 +36,7 @@ export default function ProductsSearchPage() {
           setProducts(data);
           setLoading(false);
         })
-        .catch(err => {
+        .catch(() => {
           showErrorPopup('Error searching products.');
           setLoading(false);
         });
@@ -48,12 +48,12 @@ export default function ProductsSearchPage() {
           setProducts(data);
           setLoading(false);
         })
-        .catch(err => {
+        .catch(() => {
           showErrorPopup('Error fetching products.');
           setLoading(false);
         });
     }
-  }, [query]);
+  }, [query, showErrorPopup]);
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem 3vw' }}>

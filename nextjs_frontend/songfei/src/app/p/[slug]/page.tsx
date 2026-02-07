@@ -58,11 +58,11 @@ export default function ProductDetailPage() {
         setProduct(data[0]);
         setLoading(false);
       })
-      .catch(err => {
+      .catch(() => {
         showErrorPopup('Error fetching product.');
         setLoading(false);
       });
-  }, [slug]);
+  }, [showErrorPopup, slug]);
 
   useEffect(() => {
     if (!product) return;
@@ -75,11 +75,11 @@ export default function ProductDetailPage() {
         setReviews(normalized);
         setReviewsLoading(false);
       })
-      .catch(err => {
+      .catch(() => {
         showErrorPopup('Error fetching reviews.');
         setReviewsLoading(false);
       });
-  }, [product]);
+  }, [product, showErrorPopup]);
 
   if (loading) {
     return <div className="muted" style={{ padding: '2rem' }}>Loading...</div>;

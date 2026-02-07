@@ -33,11 +33,11 @@ export default function ProductsCataloguePage() {
         setCategories(categoriesWithChildren);
         setLoading(false);
       })
-      .catch(err => {
+      .catch(() => {
         showErrorPopup('Error fetching categories.');
         setLoading(false);
       });
-  }, []);
+  }, [showErrorPopup]);
 
   if (loading) {
     return <div className="muted" style={{ padding: '2rem' }}>Loading...</div>;
