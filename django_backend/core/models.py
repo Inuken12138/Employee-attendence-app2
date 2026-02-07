@@ -82,6 +82,7 @@ How to extend:
 """
 
 from django.db import models
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.utils.text import slugify
 from PIL import Image, ImageOps
@@ -94,6 +95,7 @@ class User(AbstractUser):
     ROLE_CHOICES = (
         ('manager', 'Manager'),
         ('employee', 'Employee'),
+        ('customer', 'Customer'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='employee')
 
@@ -166,7 +168,30 @@ class Category(models.Model):
                 slug = f"{base_slug}-{str(uuid.uuid4())[:6]}"
                 counter += 1
             self.slug = slug
+
+        # If replacing an existing image, remove the old file
+        if self.pk:
+            try:
+                old = Category.objects.get(pk=self.pk)
+                if old.image and old.image != self.image:
+                    if os.path.isfile(old.image.path):
+                        os.remove(old.image.path)
+            except Category.DoesNotExist:
+                pass
+
         super().save(*args, **kwargs)
+
+        # Resize and optimize uploaded image to 300x300 to match inventory behavior
+        if self.image and getattr(self.image, 'path', None):
+            try:
+                img = Image.open(self.image.path)
+                img = ImageOps.exif_transpose(img)
+                img.thumbnail((300, 300), Image.LANCZOS)
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+                img.save(self.image.path, optimize=True, quality=85)
+            except Exception:
+                pass
 
     def get_breadcrumb(self):
         """Return breadcrumb path as list of categories from root to self"""
@@ -193,6 +218,11 @@ class Category(models.Model):
             level += 1
             current = current.parent
         return level
+
+    def delete(self, *args, **kwargs):
+        if self.image and getattr(self.image, 'path', None) and os.path.isfile(self.image.path):
+            os.remove(self.image.path)
+        super().delete(*args, **kwargs)
 
 
 class Product(models.Model):
@@ -223,6 +253,50 @@ class Product(models.Model):
         if self.image and self.image.path and os.path.isfile(self.image.path):
             os.remove(self.image.path)
         super().delete(*args, **kwargs)
+
+
+class CustomerProfile(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='customer_profile')
+    phone = models.CharField(max_length=40, blank=True)
+    loyalty_id = models.CharField(max_length=80, blank=True)
+    default_shipping_address = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"CustomerProfile({self.user.username})"
+
+
+class Purchase(models.Model):
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('refunded', 'Refunded'),
+        ('cancelled', 'Cancelled'),
+    )
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='purchases')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='purchases')
+    quantity = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    purchased_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} -> {self.product.name} ({self.status})"
+
+
+class Review(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='reviews')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews')
+    rating = models.PositiveSmallIntegerField()
+    title = models.CharField(max_length=200, blank=True)
+    body = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    verified_purchase = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Review({self.product.name}, {self.user.username}, {self.rating})"
 
 
 class Workplace(models.Model):

@@ -18,8 +18,8 @@ const unbounded = Unbounded({
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className={`${literata.variable} ${unbounded.variable}`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${literata.variable} ${unbounded.variable}`} suppressHydrationWarning>
         <div className="app-shell">
           <ConditionalHeader />
           <main className="app-main">{children}</main>

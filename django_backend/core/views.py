@@ -105,14 +105,16 @@ from django.shortcuts import render
 from rest_framework import viewsets, permissions, generics, filters
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category
-from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer, WorkplaceSerializer, EmployeeFaceProfileSerializer, CategorySerializer
+from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category, Review, Purchase
+from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer, WorkplaceSerializer, EmployeeFaceProfileSerializer, CategorySerializer, ReviewSerializer
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from rest_framework.decorators import api_view
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.exceptions import ValidationError
+from django.db.models import Avg, Count
 from django.utils import timezone
 import calendar
 import pandas as pd
@@ -172,15 +174,19 @@ class ProductViewSet(viewsets.ModelViewSet):
     permission_classes = []
     parser_classes = [MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['category', 'colour', 'material', 'is_best_seller', 'is_new']
+    filterset_fields = ['category', 'colour', 'material', 'is_best_seller', 'is_new', 'product_id', 'slug']
     search_fields = ['name', 'description', 'product_id']
     ordering_fields = ['name', 'price']
     ordering = ['name']
 
     def get_queryset(self):
-        queryset = Product.objects.all()
+        queryset = Product.objects.all().annotate(
+            rating=Avg('reviews__rating'),
+            rating_count=Count('reviews', distinct=True),
+        )
         category_slug = self.request.query_params.get('category_slug', None)
         include_descendants = self.request.query_params.get('include_descendants', 'false').lower() == 'true'
+        slug = self.request.query_params.get('slug', None)
 
         if category_slug:
             try:
@@ -193,6 +199,9 @@ class ProductViewSet(viewsets.ModelViewSet):
                     queryset = queryset.filter(category=category)
             except Category.DoesNotExist:
                 queryset = queryset.none()
+
+        if slug:
+            queryset = queryset.filter(slug=slug)
 
         return queryset
 
@@ -208,6 +217,43 @@ class ProductViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import ValidationError
             raise ValidationError({'product_id': 'A product with this product_id already exists.'})
         serializer.save()
+
+
+class ReviewViewSet(viewsets.ModelViewSet):
+    queryset = Review.objects.select_related('user', 'product')
+    serializer_class = ReviewSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = Review.objects.select_related('user', 'product')
+        product_id = self.request.query_params.get('product', None)
+        product_slug = self.request.query_params.get('product_slug', None)
+
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+        elif product_slug:
+            try:
+                product = Product.objects.get(slug=product_slug)
+                queryset = queryset.filter(product=product)
+            except Product.DoesNotExist:
+                queryset = queryset.none()
+
+        return queryset
+
+    def perform_create(self, serializer):
+        product = serializer.validated_data.get('product')
+        user = self.request.user
+
+        has_verified_purchase = Purchase.objects.filter(
+            user=user,
+            product=product,
+            status='completed',
+        ).exists()
+
+        if not has_verified_purchase:
+            raise ValidationError({'detail': 'Verified purchase required to submit a review.'})
+
+        serializer.save(user=user, verified_purchase=True)
 
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all()

@@ -35,7 +35,7 @@ Current Implementation
 """
 
 from rest_framework import serializers
-from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category
+from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category, CustomerProfile, Review, Purchase
 
 class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -95,12 +95,15 @@ class ProductSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     category_name = serializers.CharField(source='category.name', read_only=True)
     category_slug = serializers.CharField(source='category.slug', read_only=True)
+    rating = serializers.FloatField(read_only=True)
+    ratingCount = serializers.IntegerField(source='rating_count', read_only=True)
 
     class Meta:
         model = Product
         fields = [
             'id', 'product_id', 'name', 'price', 'description', 'category', 'category_name', 'category_slug',
-            'slug', 'image', 'image_url', 'colour', 'material', 'is_best_seller', 'is_new'
+            'slug', 'image', 'image_url', 'colour', 'material', 'is_best_seller', 'is_new',
+            'rating', 'ratingCount'
         ]
 
     def get_image_url(self, obj):
@@ -124,6 +127,14 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'email', 'role']
 
+
+class CustomerProfileSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = CustomerProfile
+        fields = ['id', 'user', 'phone', 'loyalty_id', 'default_shipping_address']
+
 class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -145,3 +156,17 @@ class EmployeeFaceProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmployeeFaceProfile
         fields = '__all__'
+
+
+class ReviewSerializer(serializers.ModelSerializer):
+    user_username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = Review
+        fields = ['id', 'product', 'user', 'user_username', 'rating', 'title', 'body', 'created_at', 'verified_purchase']
+        read_only_fields = ['user', 'verified_purchase', 'created_at']
+
+    def validate_rating(self, value):
+        if value < 1 or value > 5:
+            raise serializers.ValidationError('Rating must be between 1 and 5.')
+        return value

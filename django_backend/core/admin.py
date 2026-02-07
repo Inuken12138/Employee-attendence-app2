@@ -37,7 +37,7 @@ How to extend this configuration:
 """
 
 from django.contrib import admin
-from .models import User, Employee, InventoryItem, Product, Category
+from .models import User, Employee, InventoryItem, Product, Category, CustomerProfile, Review, Purchase
 
 
 # Register your models here.
@@ -46,3 +46,6 @@ admin.site.register(Employee)
 admin.site.register(InventoryItem)
 admin.site.register(Category)
 admin.site.register(Product)
+admin.site.register(CustomerProfile)
+admin.site.register(Purchase)
+admin.site.register(Review)

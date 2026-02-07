@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import RatingStars from '../../components/RatingStars';
 
 interface Category {
   id: number;
@@ -23,6 +24,8 @@ interface Product {
   image_url: string | null;
   is_best_seller: boolean;
   is_new: boolean;
+  rating?: number | null;
+  ratingCount?: number | null;
 }
 
 export default function CategoryPage() {
@@ -307,6 +310,9 @@ export default function CategoryPage() {
                     </div>
                     <div style={{ fontSize: '0.95rem', fontWeight: 500, marginBottom: '0.4rem' }}>
                       {product.name}
+                    </div>
+                    <div style={{ marginBottom: '0.35rem' }}>
+                      <RatingStars rating={product.rating} count={product.ratingCount} />
                     </div>
                     <div style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--accent-1)' }}>
                       ${product.price.toFixed(2)}

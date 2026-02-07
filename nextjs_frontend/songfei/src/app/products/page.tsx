@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import RatingStars from '../components/RatingStars';
 
 interface Product {
   id: number;
@@ -14,6 +15,8 @@ interface Product {
   is_best_seller: boolean;
   category_name: string;
   category_slug: string;
+  rating?: number | null;
+  ratingCount?: number | null;
 }
 
 export default function ProductsSearchPage() {
@@ -131,6 +134,9 @@ export default function ProductsSearchPage() {
               </div>
               <div style={{ fontSize: '0.85rem', color: 'var(--ink-3)', marginBottom: '0.4rem' }}>
                 {product.category_name}
+              </div>
+              <div style={{ marginBottom: '0.4rem' }}>
+                <RatingStars rating={product.rating} count={product.ratingCount} />
               </div>
               <div style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--accent-1)' }}>
                 ${product.price.toFixed(2)}
