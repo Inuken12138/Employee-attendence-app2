@@ -15,6 +15,9 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# Path to the virtualenv inside django_backend
+VENV_DIR="$SCRIPT_DIR/django_backend/.songfeiVENV"
+
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Employee Attendance App Startup${NC}"
 echo -e "${GREEN}========================================${NC}"
@@ -22,12 +25,12 @@ echo ""
 
 # Step 1: Check if virtual environment exists
 echo -e "${YELLOW}[1/5] Checking virtual environment...${NC}"
-if [ ! -d ".songfeiVENV" ]; then
-    echo -e "${RED}Error: Virtual environment '.songfeiVENV' not found!${NC}"
-    echo "Please run: python3 -m venv .songfeiVENV && source .songfeiVENV/bin/activate && pip install -r requirements.txt"
+if [ ! -d "$VENV_DIR" ]; then
+    echo -e "${RED}Error: Virtual environment '$VENV_DIR' not found!${NC}"
+    echo "Please run: python3 -m venv \"$VENV_DIR\" && source \"$VENV_DIR/bin/activate\" && pip install -r django_backend/requirements.txt"
     exit 1
 fi
-echo -e "${GREEN}✓ Virtual environment found${NC}"
+echo -e "${GREEN}✓ Virtual environment found at: $VENV_DIR${NC}"
 echo ""
 
 # Step 2: Start PostgreSQL
@@ -47,8 +50,8 @@ cd "$SCRIPT_DIR/django_backend"
 # Create a log directory if it doesn't exist
 mkdir -p "$SCRIPT_DIR/logs"
 
-# Start backend in background
-nohup bash -c "source '$SCRIPT_DIR/.songfeiVENV/bin/activate' && python manage.py runserver 0.0.0.0:8000" > "$SCRIPT_DIR/logs/backend.log" 2>&1 &
+# Start backend in background using the venv in django_backend
+nohup bash -c "source \"$VENV_DIR/bin/activate\" && python manage.py runserver 0.0.0.0:8000" > "$SCRIPT_DIR/logs/backend.log" 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > "$SCRIPT_DIR/.backend.pid"
 echo -e "${GREEN}✓ Django backend started (PID: $BACKEND_PID)${NC}"
