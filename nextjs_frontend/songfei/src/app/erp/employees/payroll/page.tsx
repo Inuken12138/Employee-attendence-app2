@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import useErrorPopup from '../../../hooks/useErrorPopup';
 
 interface PayrollResult {
   employee_id: string | null;
@@ -16,11 +17,12 @@ export default function EmployeePayrollPage() {
   const [uploadMonth, setUploadMonth] = useState(new Date().getMonth() + 1);
   const [uploadYear, setUploadYear] = useState(new Date().getFullYear());
   const [isUploading, setIsUploading] = useState(false);
+  const { showErrorPopup } = useErrorPopup();
 
   const uploadAttendance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!attendanceFile) {
-      alert('Please select an attendance file.');
+      showErrorPopup('Please select an attendance file.');
       return;
     }
 
@@ -38,7 +40,7 @@ export default function EmployeePayrollPage() {
 
       const data = await response.json();
       if (!response.ok) {
-        alert(data?.error || 'Failed to upload attendance sheet.');
+        showErrorPopup(data?.error || 'Failed to upload attendance sheet.');
         return;
       }
 
@@ -49,8 +51,7 @@ export default function EmployeePayrollPage() {
         working_days: data.working_days,
       });
     } catch (error) {
-      console.error('Error uploading attendance:', error);
-      alert('Failed to upload attendance sheet.');
+      showErrorPopup('Failed to upload attendance sheet.');
     } finally {
       setIsUploading(false);
     }

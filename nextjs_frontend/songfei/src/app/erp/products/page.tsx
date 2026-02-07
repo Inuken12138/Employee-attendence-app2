@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import useErrorPopup from '../../hooks/useErrorPopup';
 
 interface Category {
   id: number;
@@ -45,6 +46,49 @@ export default function ManageProducts() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const { showErrorPopup } = useErrorPopup();
+
+  const convertImageToJpegOrPng = async (file: File): Promise<File> => {
+    if (file.type === 'image/jpeg' || file.type === 'image/png') {
+      return file;
+    }
+
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      const url = URL.createObjectURL(file);
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load image for conversion'));
+      };
+      image.src = url;
+    });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Canvas not supported');
+    }
+
+    ctx.drawImage(img, 0, 0);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('Image conversion failed'))),
+        'image/jpeg',
+        0.9
+      );
+    });
+
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'image';
+    return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+  };
 
   useEffect(() => {
     fetch('http://localhost:8000/api/categories/?parent=null')
@@ -53,7 +97,10 @@ export default function ManageProducts() {
         setRootCategories(data);
         setCurrentCategories(data);
       })
-      .catch(err => console.error('Error fetching categories:', err));
+      .catch(err => {
+        const message = err?.message || 'Error fetching categories';
+        showErrorPopup(message);
+      });
   }, []);
 
   const handleCategorySelect = (category: Category) => {
@@ -68,7 +115,10 @@ export default function ManageProducts() {
         .then(data => {
           setCurrentCategories(data);
         })
-        .catch(err => console.error('Error fetching children:', err));
+        .catch(err => {
+          const message = err?.message || 'Error fetching children';
+          showErrorPopup(message);
+        });
     } else {
       // Leaf category selected
       setCurrentCategories([]);
@@ -90,13 +140,18 @@ export default function ManageProducts() {
         .then(data => {
           setCurrentCategories(data);
         })
-        .catch(err => console.error('Error fetching children:', err));
+        .catch(err => {
+          const message = err?.message || 'Error fetching children';
+          showErrorPopup(message);
+        });
     }
   };
 
   const handleCreateSubcategory = async () => {
     if (!newSubcategoryName.trim()) {
-      setError('Subcategory name is required');
+      const message = 'Subcategory name is required';
+      setError(message);
+      showErrorPopup(message);
       return;
     }
 
@@ -115,7 +170,8 @@ export default function ManageProducts() {
         formData.append('parent', parentId.toString());
       }
       if (newCategoryImageFile) {
-        formData.append('image', newCategoryImageFile);
+        const converted = await convertImageToJpegOrPng(newCategoryImageFile);
+        formData.append('image', converted);
       }
 
       const res = await fetch('http://localhost:8000/api/categories/', {
@@ -125,7 +181,12 @@ export default function ManageProducts() {
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.detail || 'Failed to create subcategory');
+        const message =
+          errorData.image?.[0] ||
+          errorData.non_field_errors?.[0] ||
+          errorData.detail ||
+          'Failed to create subcategory';
+        throw new Error(message);
       }
 
       const newCategory = await res.json();
@@ -137,19 +198,28 @@ export default function ManageProducts() {
       setNewCategoryImagePreview(null);
       setError(null);
     } catch (err: any) {
-      setError(err.message || 'Failed to create subcategory');
+      const message = err.message || 'Failed to create subcategory';
+      setError(message);
+      showErrorPopup(message);
     }
   };
 
-  const handleNewCategoryImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNewCategoryImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setNewCategoryImageFile(file);
+    if (!file) return;
+
+    try {
+      const converted = await convertImageToJpegOrPng(file);
+      setNewCategoryImageFile(converted);
       const reader = new FileReader();
       reader.onloadend = () => {
         setNewCategoryImagePreview(reader.result as string);
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(converted);
+    } catch (err: any) {
+      const message = err.message || 'Failed to process image';
+      setError(message);
+      showErrorPopup(message);
     }
   };
 
@@ -163,7 +233,8 @@ export default function ManageProducts() {
     try {
       const formData = new FormData();
       if (file) {
-        formData.append('image', file);
+        const converted = await convertImageToJpegOrPng(file);
+        formData.append('image', converted);
       } else {
         formData.append('image', '');
       }
@@ -175,7 +246,12 @@ export default function ManageProducts() {
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.detail || 'Failed to update category image');
+        const message =
+          errorData.image?.[0] ||
+          errorData.non_field_errors?.[0] ||
+          errorData.detail ||
+          'Failed to update category image';
+        throw new Error(message);
       }
 
       const updated = await res.json();
@@ -192,21 +268,30 @@ export default function ManageProducts() {
       setCategoryImageSuccess(file ? 'Category image updated.' : 'Category image removed.');
       setTimeout(() => setCategoryImageSuccess(null), 3000);
     } catch (err: any) {
-      setCategoryImageError(err.message || 'Failed to update category image');
+      const message = err.message || 'Failed to update category image';
+      setCategoryImageError(message);
+      showErrorPopup(message);
     } finally {
       setCategoryImageUpdating(false);
     }
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
+    if (!file) return;
+
+    try {
+      const converted = await convertImageToJpegOrPng(file);
+      setImageFile(converted);
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(converted);
+    } catch (err: any) {
+      const message = err.message || 'Failed to process image';
+      setError(message);
+      showErrorPopup(message);
     }
   };
 
@@ -228,13 +313,17 @@ export default function ManageProducts() {
     setSaving(true);
 
     if (selectedPath.length === 0) {
-      setError('Please select a category');
+      const message = 'Please select a category';
+      setError(message);
+      showErrorPopup(message);
       setSaving(false);
       return;
     }
 
     if (!productForm.product_id.trim()) {
-      setError('Product ID is required');
+      const message = 'Product ID is required';
+      setError(message);
+      showErrorPopup(message);
       setSaving(false);
       return;
     }
@@ -242,7 +331,9 @@ export default function ManageProducts() {
     // Validate product_id uniqueness
     const isUnique = await validateProductId(productForm.product_id);
     if (!isUnique) {
-      setError('A product with this product_id already exists');
+      const message = 'A product with this product_id already exists';
+      setError(message);
+      showErrorPopup(message);
       setSaving(false);
       return;
     }
@@ -270,7 +361,13 @@ export default function ManageProducts() {
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.detail || errorData.product_id?.[0] || 'Failed to create product');
+        const message =
+          errorData.image?.[0] ||
+          errorData.product_id?.[0] ||
+          errorData.non_field_errors?.[0] ||
+          errorData.detail ||
+          'Failed to create product';
+        throw new Error(message);
       }
 
       setSuccess(true);
@@ -292,7 +389,9 @@ export default function ManageProducts() {
       
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
-      setError(err.message || 'Failed to create product');
+      const message = err.message || 'Failed to create product';
+      setError(message);
+      showErrorPopup(message);
     } finally {
       setSaving(false);
     }
@@ -320,6 +419,7 @@ export default function ManageProducts() {
   return (
     <div>
       <h2 style={{ marginBottom: '2rem' }}>Manage Products</h2>
+
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
         {/* Category Picker */}

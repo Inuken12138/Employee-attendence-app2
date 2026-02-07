@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import useErrorPopup from '../../hooks/useErrorPopup';
 
 interface Category {
   id: number;
@@ -14,6 +15,7 @@ interface Category {
 export default function ProductsCataloguePage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const { showErrorPopup } = useErrorPopup();
 
   useEffect(() => {
     // Fetch root categories
@@ -32,7 +34,7 @@ export default function ProductsCataloguePage() {
         setLoading(false);
       })
       .catch(err => {
-        console.error('Error fetching categories:', err);
+        showErrorPopup('Error fetching categories.');
         setLoading(false);
       });
   }, []);

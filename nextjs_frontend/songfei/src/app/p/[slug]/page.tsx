@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import RatingStars from '../../components/RatingStars';
+import useErrorPopup from '../../hooks/useErrorPopup';
 
 interface Product {
   id: number;
@@ -40,6 +41,7 @@ export default function ProductDetailPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewsLoading, setReviewsLoading] = useState(true);
+  const { showErrorPopup } = useErrorPopup();
 
   useEffect(() => {
     if (!slug) return;
@@ -57,7 +59,7 @@ export default function ProductDetailPage() {
         setLoading(false);
       })
       .catch(err => {
-        console.error('Error fetching product:', err);
+        showErrorPopup('Error fetching product.');
         setLoading(false);
       });
   }, [slug]);
@@ -74,7 +76,7 @@ export default function ProductDetailPage() {
         setReviewsLoading(false);
       })
       .catch(err => {
-        console.error('Error fetching reviews:', err);
+        showErrorPopup('Error fetching reviews.');
         setReviewsLoading(false);
       });
   }, [product]);

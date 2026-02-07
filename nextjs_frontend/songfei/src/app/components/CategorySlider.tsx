@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import useErrorPopup from '../hooks/useErrorPopup';
 
 interface Category {
   id: number;
@@ -14,6 +15,7 @@ interface Category {
 export default function CategorySlider() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const { showErrorPopup } = useErrorPopup();
 
   useEffect(() => {
     fetch('http://localhost:8000/api/categories/?parent=null')
@@ -23,7 +25,7 @@ export default function CategorySlider() {
         setLoading(false);
       })
       .catch(err => {
-        console.error('Error fetching categories:', err);
+        showErrorPopup('Error fetching categories.');
         setLoading(false);
       });
   }, []);

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import useErrorPopup from '../../../hooks/useErrorPopup';
 
 interface InventoryItem {
   id: number;
@@ -21,6 +22,7 @@ export default function InventoryDetailPage() {
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [newImage, setNewImage] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const { showErrorPopup } = useErrorPopup();
 
   useEffect(() => {
     if (!itemId) {
@@ -33,7 +35,7 @@ export default function InventoryDetailPage() {
         const data = await response.json();
         setItem(data);
       } catch (error) {
-        console.error('Error fetching inventory item:', error);
+        showErrorPopup('Error fetching inventory item.');
       }
     };
 
@@ -65,7 +67,7 @@ export default function InventoryDetailPage() {
 
       if (!response.ok) {
         const data = await response.json();
-        alert(data?.detail || 'Failed to update image.');
+        showErrorPopup(data?.detail || 'Failed to update image.');
         return;
       }
 
@@ -73,8 +75,7 @@ export default function InventoryDetailPage() {
       setItem(updated);
       setNewImage(null);
     } catch (error) {
-      console.error('Error updating image:', error);
-      alert('Failed to update image.');
+      showErrorPopup('Failed to update image.');
     } finally {
       setIsUploading(false);
     }

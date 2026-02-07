@@ -1,11 +1,13 @@
 'use client';
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import useErrorPopup from '../hooks/useErrorPopup';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const router = useRouter();
+  const { showErrorPopup } = useErrorPopup();
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -20,7 +22,7 @@ export default function LoginPage() {
       localStorage.setItem('username', username);
       router.push('/erp');
     } else {
-      alert('Login failed');
+      showErrorPopup('Login failed');
     }
   };
 

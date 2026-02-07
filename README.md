@@ -2,6 +2,7 @@
 
 > 📖 For detailed automation script documentation, see [AUTOMATION.md](AUTOMATION.md)
 
+
 ## Quick Start (Automated)
 
 **Start all services with a single command:**
@@ -217,3 +218,6 @@ nuke songfei_db database and rebuild it:
 quickly access the db:
 
     python manage.py dbshell
+
+
+You can enable the reusable error popup UI by using the ErrorPopup component together with the useErrorPopup hook in the frontend.

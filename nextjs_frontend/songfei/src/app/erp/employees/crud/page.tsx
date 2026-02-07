@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import useErrorPopup from '../../../hooks/useErrorPopup';
 
 interface Employee {
   id: number;
@@ -11,6 +12,7 @@ export default function EmployeeCrudPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [newEmployee, setNewEmployee] = useState({ name: '', salary: '' });
   const [searchTerm, setSearchTerm] = useState('');
+  const { showErrorPopup } = useErrorPopup();
 
   const fetchEmployees = async () => {
     try {
@@ -18,7 +20,7 @@ export default function EmployeeCrudPage() {
       const data = await response.json();
       setEmployees(data);
     } catch (error) {
-      console.error('Error fetching employees:', error);
+      showErrorPopup('Error fetching employees.');
     }
   };
 
@@ -41,7 +43,7 @@ export default function EmployeeCrudPage() {
         fetchEmployees();
       }
     } catch (error) {
-      console.error('Error creating employee:', error);
+      showErrorPopup('Error creating employee.');
     }
   };
 
@@ -51,7 +53,7 @@ export default function EmployeeCrudPage() {
       const data = await response.json();
       setEmployees(data);
     } catch (error) {
-      console.error('Error searching employees:', error);
+      showErrorPopup('Error searching employees.');
     }
   };
 
@@ -66,7 +68,7 @@ export default function EmployeeCrudPage() {
           fetchEmployees();
         }
       } catch (error) {
-        console.error('Error deleting employee:', error);
+        showErrorPopup('Error deleting employee.');
       }
     }
   };

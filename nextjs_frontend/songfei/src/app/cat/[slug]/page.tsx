@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import RatingStars from '../../components/RatingStars';
+import useErrorPopup from '../../hooks/useErrorPopup';
 
 interface Category {
   id: number;
@@ -36,6 +37,7 @@ export default function CategoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [parentCategory, setParentCategory] = useState<Category | null>(null);
+  const { showErrorPopup } = useErrorPopup();
 
   useEffect(() => {
     if (!slug) return;
@@ -76,7 +78,7 @@ export default function CategoryPage() {
         setLoading(false);
       })
       .catch(err => {
-        console.error('Error fetching category:', err);
+        showErrorPopup('Error fetching category.');
         setLoading(false);
       });
   }, [slug]);

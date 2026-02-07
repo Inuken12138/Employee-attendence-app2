@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import useErrorPopup from '../../hooks/useErrorPopup';
 
 interface InventoryItem {
   id: number;
@@ -24,6 +25,7 @@ export default function InventoryPage() {
     unit: '',
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const { showErrorPopup } = useErrorPopup();
 
   const fetchItems = async () => {
     try {
@@ -31,7 +33,7 @@ export default function InventoryPage() {
       const data = await response.json();
       setItems(data);
     } catch (error) {
-      console.error('Error fetching inventory:', error);
+      showErrorPopup('Error fetching inventory.');
     }
   };
 
@@ -70,7 +72,7 @@ export default function InventoryPage() {
 
       if (!response.ok) {
         const data = await response.json();
-        alert(data?.detail || 'Failed to create inventory item.');
+        showErrorPopup(data?.detail || 'Failed to create inventory item.');
         return;
       }
 
@@ -85,8 +87,7 @@ export default function InventoryPage() {
       setShowForm(false);
       fetchItems();
     } catch (error) {
-      console.error('Error creating inventory item:', error);
-      alert('Failed to create inventory item.');
+      showErrorPopup('Failed to create inventory item.');
     }
   };
 
@@ -99,13 +100,12 @@ export default function InventoryPage() {
         method: 'DELETE',
       });
       if (!response.ok) {
-        alert('Failed to delete inventory item.');
+        showErrorPopup('Failed to delete inventory item.');
         return;
       }
       fetchItems();
     } catch (error) {
-      console.error('Error deleting inventory item:', error);
-      alert('Failed to delete inventory item.');
+      showErrorPopup('Failed to delete inventory item.');
     }
   };
 

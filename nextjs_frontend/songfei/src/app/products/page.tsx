@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import RatingStars from '../components/RatingStars';
+import useErrorPopup from '../hooks/useErrorPopup';
 
 interface Product {
   id: number;
@@ -24,6 +25,7 @@ export default function ProductsSearchPage() {
   const query = searchParams.get('query') || '';
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const { showErrorPopup } = useErrorPopup();
 
   useEffect(() => {
     if (query) {
@@ -35,7 +37,7 @@ export default function ProductsSearchPage() {
           setLoading(false);
         })
         .catch(err => {
-          console.error('Error searching products:', err);
+          showErrorPopup('Error searching products.');
           setLoading(false);
         });
     } else {
@@ -47,7 +49,7 @@ export default function ProductsSearchPage() {
           setLoading(false);
         })
         .catch(err => {
-          console.error('Error fetching products:', err);
+          showErrorPopup('Error fetching products.');
           setLoading(false);
         });
     }

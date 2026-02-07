@@ -1,6 +1,7 @@
 'use client';
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import useErrorPopup from '../../hooks/useErrorPopup';
 
 export default function AddEmployee() {
   const [form, setForm] = useState({
@@ -11,6 +12,7 @@ export default function AddEmployee() {
     deductions: ''
   });
   const router = useRouter();
+  const { showErrorPopup } = useErrorPopup();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -34,10 +36,9 @@ export default function AddEmployee() {
     });
 
     if (res.ok) {
-      alert('Employee added successfully');
       router.push('/erp/employees');
     } else {
-      alert('Error adding employee');
+      showErrorPopup('Error adding employee');
     }
   };
 
