@@ -2,6 +2,8 @@
 
 :root {
   color-scheme: dark;
+  --font-body: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --ink-1: #f5f2ea;
   --ink-2: #cfc7ba;
   --ink-3: #9b9489;

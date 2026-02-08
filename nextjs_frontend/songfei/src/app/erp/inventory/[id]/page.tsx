@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 import useErrorPopup from '../../../hooks/useErrorPopup';
 
@@ -147,11 +148,15 @@ export default function InventoryDetailPage() {
             <div className="pill">Item Summary</div>
             {item?.image && (
               <div style={{ marginTop: '1rem' }}>
-                <img
-                  src={getImageSrc(item.image) || ''}
-                  alt={item.name}
-                  style={{ borderRadius: '18px', height: '200px', width: '100%', objectFit: 'cover' }}
-                />
+                <div style={{ position: 'relative', height: '200px', width: '100%', borderRadius: '18px', overflow: 'hidden' }}>
+                  <Image
+                    src={getImageSrc(item.image) || ''}
+                    alt={item.name}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 360px"
+                    style={{ objectFit: 'cover' }}
+                  />
+                </div>
               </div>
             )}
             <form onSubmit={updateImage} className="form-grid" style={{ marginTop: '1.2rem' }}>

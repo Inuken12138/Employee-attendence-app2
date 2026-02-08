@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import useErrorPopup from '../../hooks/useErrorPopup';
 
@@ -244,10 +245,12 @@ export default function InventoryPage() {
                     <td>{item.name}</td>
                     <td>
                       {item.image ? (
-                        <img
+                        <Image
                           src={getImageSrc(item.image) || ''}
                           alt={item.name}
-                          style={{ width: '90px', height: '64px', objectFit: 'cover', borderRadius: '10px' }}
+                          width={90}
+                          height={64}
+                          style={{ objectFit: 'cover', borderRadius: '10px' }}
                         />
                       ) : (
                         <div style={{ width: '90px', height: '64px', borderRadius: '10px', background: 'rgba(245, 242, 234, 0.08)' }} />

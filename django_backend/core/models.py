@@ -103,9 +103,70 @@ class Employee(models.Model):
     name = models.CharField(max_length=100)
     #position = models.CharField(max_length=100)
     base_salary = models.FloatField()
+    worker_id = models.CharField(max_length=50, unique=True, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
     
     def __str__(self):
         return self.name
+
+
+class AttendanceRecord(models.Model):
+    STATUS_CHOICES = (
+        ('draft', 'Draft'),
+        ('final', 'Final'),
+    )
+
+    year = models.PositiveIntegerField()
+    month = models.PositiveSmallIntegerField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['year', 'month', 'status'], name='unique_attendance_record_status'),
+        ]
+
+    def __str__(self):
+        return f"AttendanceRecord({self.year}-{self.month:02d}, {self.status})"
+
+
+class AttendanceRecordEmployee(models.Model):
+    record = models.ForeignKey(AttendanceRecord, on_delete=models.CASCADE, related_name='employees')
+    employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True)
+    employee_name = models.CharField(max_length=120, blank=True)
+    department = models.CharField(max_length=120, blank=True)
+    worker_id = models.CharField(max_length=50, blank=True)
+
+    class Meta:
+        unique_together = ('record', 'worker_id')
+
+    def __str__(self):
+        return f"AttendanceRecordEmployee({self.worker_id or self.employee_name})"
+
+
+class AttendanceShift(models.Model):
+    STATUS_CHOICES = (
+        ('present', 'Present'),
+        ('absent', 'Absent'),
+        ('missing', 'Missing'),
+    )
+
+    record_employee = models.ForeignKey(AttendanceRecordEmployee, on_delete=models.CASCADE, related_name='shifts')
+    day = models.PositiveSmallIntegerField()
+    raw_logs = models.JSONField(default=list, blank=True)
+    morning_in = models.CharField(max_length=20, blank=True)
+    morning_out = models.CharField(max_length=20, blank=True)
+    afternoon_in = models.CharField(max_length=20, blank=True)
+    afternoon_out = models.CharField(max_length=20, blank=True)
+    morning_status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='missing')
+    afternoon_status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='missing')
+
+    class Meta:
+        unique_together = ('record_employee', 'day')
+
+    def __str__(self):
+        return f"AttendanceShift({self.record_employee_id}, day {self.day})"
 
 class InventoryItem(models.Model):
     item_code = models.CharField(max_length=50, blank=True)

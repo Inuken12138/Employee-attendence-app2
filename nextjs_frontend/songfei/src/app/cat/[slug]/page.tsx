@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 import RatingStars from '../../components/RatingStars';
 import useErrorPopup from '../../hooks/useErrorPopup';
@@ -164,14 +165,15 @@ export default function CategoryPage() {
                   backgroundColor: 'rgba(245, 242, 234, 0.08)',
                   borderRadius: 'var(--radius-md)',
                   marginBottom: '0.8rem',
+                  position: 'relative',
                 }}>
                   {child.image_url && (
-                    <img
+                    <Image
                       src={child.image_url}
                       alt={child.name}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 200px"
                       style={{
-                        width: '100%',
-                        height: '100%',
                         objectFit: 'cover',
                         borderRadius: 'var(--radius-md)',
                       }}
@@ -291,14 +293,15 @@ export default function CategoryPage() {
                       borderRadius: 'var(--radius-md)',
                       marginBottom: '0.8rem',
                       overflow: 'hidden',
+                      position: 'relative',
                     }}>
                       {product.image_url ? (
-                        <img
+                        <Image
                           src={product.image_url}
                           alt={product.name}
+                          fill
+                          sizes="(max-width: 768px) 100vw, 220px"
                           style={{
-                            width: '100%',
-                            height: '100%',
                             objectFit: 'cover',
                           }}
                         />

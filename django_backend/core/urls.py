@@ -40,7 +40,7 @@ Current Implementation
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import EmployeeViewSet, InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView, AttendancePayrollUploadView, WorkplaceViewSet, FaceEnrollView, FaceVerifyView, CategoryViewSet, ReviewViewSet
+from .views import EmployeeViewSet, InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView, AttendanceRecordsParseView, AttendanceRecordsSaveView, AttendanceRecordsSaveDraftView, AttendanceRecordsFetchView, AttendanceRecordsDraftFetchView, WorkplaceViewSet, FaceEnrollView, FaceVerifyView, CategoryViewSet, ReviewViewSet
 from rest_framework.authtoken.views import obtain_auth_token
 
 import logging
@@ -67,7 +67,11 @@ urlpatterns = [
     path('logout/', LogoutView.as_view(), name='logout'),
     path('api-token-auth/', obtain_auth_token),
     path('login/', LoginView.as_view(), name='login'),
-   path('payroll/upload-attendance/', AttendancePayrollUploadView.as_view(), name='upload-attendance'),
+   path('payroll/attendance-records/parse/', AttendanceRecordsParseView.as_view(), name='attendance-records-parse'),
+   path('payroll/attendance-records/save/', AttendanceRecordsSaveView.as_view(), name='attendance-records-save'),
+   path('payroll/attendance-records/save-draft/', AttendanceRecordsSaveDraftView.as_view(), name='attendance-records-save-draft'),
+   path('payroll/attendance-records/', AttendanceRecordsFetchView.as_view(), name='attendance-records-fetch'),
+   path('payroll/attendance-records/drafts/', AttendanceRecordsDraftFetchView.as_view(), name='attendance-records-draft-fetch'),
    path('face/enroll/', FaceEnrollView.as_view(), name='face-enroll'),
    path('face/verify/', FaceVerifyView.as_view(), name='face-verify'),
     

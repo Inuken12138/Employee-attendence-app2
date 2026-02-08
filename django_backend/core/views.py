@@ -105,7 +105,7 @@ from django.shortcuts import render
 from rest_framework import viewsets, permissions, generics, filters
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category, Review, Purchase
+from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category, Review, Purchase, AttendanceRecord, AttendanceRecordEmployee, AttendanceShift
 from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer, WorkplaceSerializer, EmployeeFaceProfileSerializer, CategorySerializer, ReviewSerializer
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -115,8 +115,10 @@ from rest_framework.decorators import api_view
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import ValidationError
 from django.db.models import Avg, Count
+from django.db import transaction
 from django.utils import timezone
 import calendar
+import os
 import pandas as pd
 import re
 import math
@@ -363,17 +365,32 @@ def _extract_month_from_filename(filename):
     return None
 
 
-def _get_working_days_in_month(year, month):
-    last_day = calendar.monthrange(year, month)[1]
-    working_days = 0
-    for day in range(1, last_day + 1):
-        weekday = calendar.weekday(year, month, day)
-        if weekday != calendar.SUNDAY:
-            working_days += 1
-    return working_days, last_day
+def _cleanup_uploaded_file(file_obj):
+    if not file_obj:
+        return
+    try:
+        temp_path = getattr(file_obj, 'temporary_file_path', None)
+        if callable(temp_path):
+            temp_path = temp_path()
+        if temp_path and os.path.isfile(temp_path):
+            os.remove(temp_path)
+    finally:
+        try:
+            file_obj.close()
+        except Exception:
+            pass
 
 
-def _parse_attendance_sheet(file_obj, year=None, month=None):
+def _normalize_token(value):
+    return str(value).strip() if value is not None else ''
+
+
+def _row_contains_tokens(row, tokens):
+    row_text = row.tolist()
+    return all(any(token in str(cell) for cell in row_text) for token in tokens)
+
+
+def _parse_attendance_sheet_records(file_obj, year=None, month=None):
     df = pd.read_excel(file_obj, header=None)
 
     if month is None:
@@ -383,28 +400,34 @@ def _parse_attendance_sheet(file_obj, year=None, month=None):
     if year is None:
         year = timezone.now().year
 
-    working_days, last_day = _get_working_days_in_month(year, month)
+    last_day = calendar.monthrange(year, month)[1]
 
     results = []
     total_rows = df.shape[0]
-    header_rows = df[df.apply(lambda r: r.astype(str).str.contains('姓名').any(), axis=1)].index.tolist()
+    header_rows = df[df.apply(lambda r: _row_contains_tokens(r, ['工号', '姓名']), axis=1)].index.tolist()
 
     for idx, header_row in enumerate(header_rows):
         row = df.iloc[header_row]
-
         employee_id = None
         employee_name = None
+        department = None
 
-        for idx, value in row.items():
-            if str(value).strip() == '工号：':
-                for j in range(idx + 1, len(row)):
+        for col_idx, value in row.items():
+            token = _normalize_token(value)
+            if token in ('工号：', '工号'):
+                for j in range(col_idx + 1, len(row)):
                     if pd.notna(row.iloc[j]):
-                        employee_id = str(row.iloc[j]).strip()
+                        employee_id = _normalize_token(row.iloc[j])
                         break
-            if str(value).strip() == '姓名：':
-                for j in range(idx + 1, len(row)):
+            if token in ('姓名：', '姓名'):
+                for j in range(col_idx + 1, len(row)):
                     if pd.notna(row.iloc[j]):
-                        employee_name = str(row.iloc[j]).strip()
+                        employee_name = _normalize_token(row.iloc[j])
+                        break
+            if token in ('部门：', '部门'):
+                for j in range(col_idx + 1, len(row)):
+                    if pd.notna(row.iloc[j]):
+                        department = _normalize_token(row.iloc[j])
                         break
 
         day_row_idx = header_row + 1
@@ -429,34 +452,197 @@ def _parse_attendance_sheet(file_obj, year=None, month=None):
             if 1 <= day_int <= last_day:
                 day_columns[col_idx] = day_int
 
-        valid_days = 0
+        day_logs = {str(day): [] for day in range(1, last_day + 1)}
         for col_idx, day_int in day_columns.items():
             times = []
             for time_row in time_rows:
                 cell = time_row.iloc[col_idx]
                 if pd.isna(cell):
                     continue
-                times.extend([t.strip() for t in str(cell).split('\n') if t.strip()])
-            if len(times) == 4:
-                valid_days += 1
+                cell_tokens = [t.strip() for t in re.split(r'\r?\n', str(cell)) if t.strip()]
+                times.extend(cell_tokens)
+            day_logs[str(day_int)] = times
+
+        if employee_id:
+            matched_employee = Employee.objects.filter(worker_id=employee_id).first()
+            if matched_employee and not matched_employee.is_active:
+                continue
 
         results.append({
             'employee_id': employee_id,
+            'worker_id': employee_id,
             'employee_name': employee_name,
-            'valid_days': valid_days,
-            'working_days': working_days,
-            'monthly_salary': round(2000000 * (valid_days / working_days), 2),
+            'department': department,
+            'day_logs': day_logs,
         })
 
     return {
         'year': year,
         'month': month,
-        'working_days': working_days,
-        'results': results,
+        'days_in_month': last_day,
+        'employees': results,
     }
 
 
-class AttendancePayrollUploadView(APIView):
+def _build_shift_payload(shift):
+    return {
+        'raw_logs': shift.raw_logs or [],
+        'morning': {
+            'in': shift.morning_in,
+            'out': shift.morning_out,
+            'status': shift.morning_status,
+        },
+        'afternoon': {
+            'in': shift.afternoon_in,
+            'out': shift.afternoon_out,
+            'status': shift.afternoon_status,
+        },
+    }
+
+
+def _serialize_attendance_record(record):
+    last_day = calendar.monthrange(record.year, record.month)[1]
+    employees_payload = []
+
+    for record_employee in record.employees.select_related('employee').prefetch_related('shifts'):
+        day_map = {}
+        for day in range(1, last_day + 1):
+            day_map[str(day)] = {
+                'raw_logs': [],
+                'morning': {'in': '', 'out': '', 'status': 'missing'},
+                'afternoon': {'in': '', 'out': '', 'status': 'missing'},
+            }
+
+        for shift in record_employee.shifts.all():
+            day_map[str(shift.day)] = _build_shift_payload(shift)
+
+        employees_payload.append({
+            'employee_db_id': record_employee.employee_id,
+            'worker_id': record_employee.worker_id,
+            'employee_name': record_employee.employee_name,
+            'department': record_employee.department,
+            'days': day_map,
+        })
+
+    return {
+        'year': record.year,
+        'month': record.month,
+        'status': record.status,
+        'days_in_month': last_day,
+        'employees': employees_payload,
+    }
+
+
+def _coerce_status(value):
+    if value in ('present', 'absent', 'missing'):
+        return value
+    return 'missing'
+
+
+def _extract_day_payload(day_payload):
+    raw_logs = day_payload.get('raw_logs') or day_payload.get('day_logs') or []
+    morning = day_payload.get('morning') or {}
+    afternoon = day_payload.get('afternoon') or {}
+
+    return {
+        'raw_logs': raw_logs,
+        'morning_in': str(morning.get('in', '')).strip(),
+        'morning_out': str(morning.get('out', '')).strip(),
+        'morning_status': _coerce_status(morning.get('status')),
+        'afternoon_in': str(afternoon.get('in', '')).strip(),
+        'afternoon_out': str(afternoon.get('out', '')).strip(),
+        'afternoon_status': _coerce_status(afternoon.get('status')),
+    }
+
+
+def _validate_shift_for_final(day_payload, day_index, employee_label):
+    if day_payload['morning_status'] == 'missing' or day_payload['afternoon_status'] == 'missing':
+        raise ValidationError(
+            f"Missing shifts remain for {employee_label} on day {day_index}."
+        )
+    if day_payload['morning_status'] == 'present':
+        if not day_payload['morning_in'] or not day_payload['morning_out']:
+            raise ValidationError(
+                f"Morning shift missing times for {employee_label} on day {day_index}."
+            )
+    if day_payload['afternoon_status'] == 'present':
+        if not day_payload['afternoon_in'] or not day_payload['afternoon_out']:
+            raise ValidationError(
+                f"Afternoon shift missing times for {employee_label} on day {day_index}."
+            )
+
+
+def _save_attendance_payload(payload, status):
+    year = payload.get('year')
+    month = payload.get('month')
+    employees = payload.get('employees') or []
+
+    if not year or not month:
+        raise ValidationError('Year and month are required.')
+
+    try:
+        year = int(year)
+        month = int(month)
+    except ValueError:
+        raise ValidationError('Invalid year or month.')
+
+    with transaction.atomic():
+        record, _ = AttendanceRecord.objects.update_or_create(
+            year=year,
+            month=month,
+            status=status,
+            defaults={},
+        )
+
+        record.employees.all().delete()
+
+        for employee_payload in employees:
+            worker_id = (
+                str(employee_payload.get('worker_id') or employee_payload.get('employee_id') or '').strip()
+            )
+            employee_name = str(employee_payload.get('employee_name') or '').strip()
+            department = str(employee_payload.get('department') or '').strip()
+
+            employee_obj = None
+            if worker_id:
+                employee_obj = Employee.objects.filter(worker_id=worker_id).first()
+
+            record_employee = AttendanceRecordEmployee.objects.create(
+                record=record,
+                employee=employee_obj,
+                employee_name=employee_name,
+                department=department,
+                worker_id=worker_id,
+            )
+
+            days = employee_payload.get('days') or {}
+            for day_str, day_payload in days.items():
+                try:
+                    day_index = int(day_str)
+                except ValueError:
+                    continue
+
+                normalized = _extract_day_payload(day_payload or {})
+                employee_label = worker_id or employee_name or 'Employee'
+                if status == 'final':
+                    _validate_shift_for_final(normalized, day_index, employee_label)
+
+                AttendanceShift.objects.create(
+                    record_employee=record_employee,
+                    day=day_index,
+                    raw_logs=normalized['raw_logs'],
+                    morning_in=normalized['morning_in'],
+                    morning_out=normalized['morning_out'],
+                    afternoon_in=normalized['afternoon_in'],
+                    afternoon_out=normalized['afternoon_out'],
+                    morning_status=normalized['morning_status'],
+                    afternoon_status=normalized['afternoon_status'],
+                )
+
+    return record
+
+
+class AttendanceRecordsParseView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
@@ -474,8 +660,74 @@ class AttendancePayrollUploadView(APIView):
             return Response({'error': 'Invalid month or year.'}, status=400)
 
         try:
-            payload = _parse_attendance_sheet(file_obj, year=year, month=month)
+            payload = _parse_attendance_sheet_records(file_obj, year=year, month=month)
         except Exception as exc:
             return Response({'error': f'Failed to parse attendance sheet: {exc}'}, status=400)
+        finally:
+            _cleanup_uploaded_file(file_obj)
 
         return Response(payload)
+
+
+class AttendanceRecordsSaveView(APIView):
+    def post(self, request):
+        try:
+            record = _save_attendance_payload(request.data, status='final')
+        except ValidationError as exc:
+            return Response({'error': exc.detail}, status=400)
+        except Exception as exc:
+            return Response({'error': f'Failed to save attendance record: {exc}'}, status=400)
+
+        return Response(_serialize_attendance_record(record))
+
+
+class AttendanceRecordsSaveDraftView(APIView):
+    def post(self, request):
+        try:
+            record = _save_attendance_payload(request.data, status='draft')
+        except ValidationError as exc:
+            return Response({'error': exc.detail}, status=400)
+        except Exception as exc:
+            return Response({'error': f'Failed to save draft attendance record: {exc}'}, status=400)
+
+        return Response(_serialize_attendance_record(record))
+
+
+class AttendanceRecordsFetchView(APIView):
+    def get(self, request):
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        if not year or not month:
+            return Response({'error': 'year and month are required.'}, status=400)
+
+        try:
+            year = int(year)
+            month = int(month)
+        except ValueError:
+            return Response({'error': 'Invalid year or month.'}, status=400)
+
+        record = AttendanceRecord.objects.filter(year=year, month=month, status='final').first()
+        if not record:
+            return Response({'error': 'No attendance record found.'}, status=404)
+
+        return Response(_serialize_attendance_record(record))
+
+
+class AttendanceRecordsDraftFetchView(APIView):
+    def get(self, request):
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        if not year or not month:
+            return Response({'error': 'year and month are required.'}, status=400)
+
+        try:
+            year = int(year)
+            month = int(month)
+        except ValueError:
+            return Response({'error': 'Invalid year or month.'}, status=400)
+
+        record = AttendanceRecord.objects.filter(year=year, month=month, status='draft').first()
+        if not record:
+            return Response({'error': 'No attendance draft found.'}, status=404)
+
+        return Response(_serialize_attendance_record(record))

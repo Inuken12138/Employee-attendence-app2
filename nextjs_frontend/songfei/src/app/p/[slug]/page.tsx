@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 import RatingStars from '../../components/RatingStars';
 import useErrorPopup from '../../hooks/useErrorPopup';
@@ -115,13 +116,16 @@ export default function ProductDetailPage() {
               borderRadius: 'var(--radius-lg)',
               overflow: 'hidden',
               border: '1px solid var(--edge)',
+              position: 'relative',
             }}
           >
             {product.image_url ? (
-              <img
+              <Image
                 src={product.image_url}
                 alt={product.name}
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                fill
+                sizes="(max-width: 1024px) 100vw, 520px"
+                style={{ objectFit: 'cover' }}
               />
             ) : (
               <div style={{ width: '100%', height: '100%', backgroundColor: 'rgba(245, 242, 234, 0.12)' }} />

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import useErrorPopup from '../hooks/useErrorPopup';
 
@@ -83,14 +84,15 @@ export default function CategorySlider() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 overflow: 'hidden',
+                position: 'relative',
               }}>
                 {category.image_url ? (
-                  <img
+                  <Image
                     src={category.image_url}
                     alt={category.name}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 200px"
                     style={{
-                      width: '100%',
-                      height: '100%',
                       objectFit: 'cover',
                     }}
                   />

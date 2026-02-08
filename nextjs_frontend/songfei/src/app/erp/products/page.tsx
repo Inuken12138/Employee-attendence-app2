@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import NextImage from 'next/image';
 import useErrorPopup from '../../hooks/useErrorPopup';
 
 interface Category {
@@ -781,12 +782,16 @@ export default function ManageProducts() {
                       backgroundColor: 'rgba(245, 242, 234, 0.08)',
                       overflow: 'hidden',
                       border: '1px dashed var(--edge)',
+                      position: 'relative',
                     }}>
                       {newCategoryImagePreview ? (
-                        <img
+                        <NextImage
                           src={newCategoryImagePreview}
                           alt="Category preview"
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          fill
+                          sizes="72px"
+                          style={{ objectFit: 'cover' }}
+                          unoptimized
                         />
                       ) : null}
                     </div>
@@ -858,12 +863,15 @@ export default function ManageProducts() {
                   backgroundColor: 'rgba(245, 242, 234, 0.08)',
                   overflow: 'hidden',
                   border: '1px solid var(--edge)',
+                  position: 'relative',
                 }}>
                   {selectedPath[selectedPath.length - 1].image_url ? (
-                    <img
+                    <NextImage
                       src={selectedPath[selectedPath.length - 1].image_url as string}
                       alt="Category"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      fill
+                      sizes="96px"
+                      style={{ objectFit: 'cover' }}
                     />
                   ) : null}
                 </div>
@@ -1000,11 +1008,15 @@ export default function ManageProducts() {
                     borderRadius: 'var(--radius-sm)',
                     overflow: 'hidden',
                     marginTop: '0.5rem',
+                    position: 'relative',
                   }}>
-                    <img
+                    <NextImage
                       src={imagePreview}
                       alt="Preview"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      fill
+                      sizes="150px"
+                      style={{ objectFit: 'cover' }}
+                      unoptimized
                     />
                   </div>
                 )}
@@ -1165,10 +1177,12 @@ export default function ManageProducts() {
                     <td style={{ padding: '0.6rem' }}>
                       <div style={{ width: '56px', height: '56px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', backgroundColor: 'rgba(245, 242, 234, 0.08)' }}>
                         {product.image_url ? (
-                          <img
+                          <NextImage
                             src={product.image_url}
                             alt={product.name}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            width={56}
+                            height={56}
+                            style={{ objectFit: 'cover' }}
                           />
                         ) : null}
                       </div>
@@ -1324,11 +1338,15 @@ export default function ManageProducts() {
                       borderRadius: 'var(--radius-sm)',
                       overflow: 'hidden',
                       marginTop: '0.5rem',
+                      position: 'relative',
                     }}>
-                      <img
+                      <NextImage
                         src={editImagePreview}
                         alt="Preview"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        fill
+                        sizes="150px"
+                        style={{ objectFit: 'cover' }}
+                        unoptimized
                       />
                     </div>
                   ) : (

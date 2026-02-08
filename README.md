@@ -133,6 +133,9 @@ Run migrations to check:
 
     python3 manage.py migrate
 
+### Tests
+When running `python manage.py test`, the backend switches to an in-memory SQLite database so tests do not require PostgreSQL permissions.
+
 
 ## superuser
 
