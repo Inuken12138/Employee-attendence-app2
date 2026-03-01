@@ -99,6 +99,7 @@ If you prefer to start services manually:
 ## VENV
 We are using the ".songfeiVENV" virtual environment to install python dependencies
 
+    cd "$(git rev-parse --show-toplevel)/django_backend"
     python3 -m venv .songfeiVENV
     source .songfeiVENV/bin/activate
     pip install -r requirements.txt
@@ -106,17 +107,38 @@ We are using the ".songfeiVENV" virtual environment to install python dependenci
 ## Database
 If you don't have postgresql yet:
 
+    # 1) Install prerequisites for adding external APT repositories
+    sudo apt update
     sudo apt install curl ca-certificates 
-    sudo install -d /usr/share/postgresql-common/pgdg 
-    sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc . /etc/os-release 
-    sudo sh -c "echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main' > /etc/apt/sources.list.d/pgdg.list" 
-    
-    sudo apt update 
+
+    # 2) Add the PostgreSQL APT repository signing key
+    sudo install -d /usr/share/postgresql-common/pgdg
+    sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+
+    # 3) Load Ubuntu version info (to get VERSION_CODENAME like "noble")
+    . /etc/os-release
+
+    # 4) Add the PostgreSQL APT repository for this Ubuntu version
+    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+    https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+    | sudo tee /etc/apt/sources.list.d/pgdg.list
+
+    # 5) Refresh package lists
+    sudo apt update
+
+    # 5) Install PostgreSQL 15
     sudo apt install postgresql-15
 
 We need to establish a connection between django and postgresql so the backend can talk to the database
 
+# Start Postgres once per WSL session
+    sudo service postgresql start
+
 postgresql user name: postgres (No password, for dev purpose)
+
+# Get into the psql prompt as the postgres superuser
+    sudo -u postgres psql
 
 Command for setting up the database
 
@@ -133,9 +155,6 @@ Run migrations to check:
 
     python3 manage.py migrate
 
-### Tests
-When running `python manage.py test`, the backend switches to an in-memory SQLite database so tests do not require PostgreSQL permissions.
-
 
 ## superuser
 
@@ -145,6 +164,12 @@ Use the following information:
 1. User name = renhua
 2. email = luorenhua.com@gmail.com
 3. password = laowewanxiang
+
+## front-end (nextjs_frontend)
+    cd "$(git rev-parse --show-toplevel)/nextjs_frontend/songfei"
+    npm install
+    npm run dev
+
 
 # helpful resources
 
