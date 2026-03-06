@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
+import AddToCartButton from '@/features/commerce/components/AddToCartButton';
+import { buildApiUrl } from '@/lib/api';
 import RatingStars from '../../components/RatingStars';
 import useErrorPopup from '../../hooks/useErrorPopup';
 
@@ -48,7 +50,7 @@ export default function ProductDetailPage() {
     if (!slug) return;
 
     setLoading(true);
-    fetch(`http://localhost:8000/api/products/?slug=${slug}`)
+    fetch(buildApiUrl(`/products/?slug=${slug}`))
       .then(res => res.json())
       .then(data => {
         if (!data.length) {
@@ -69,7 +71,7 @@ export default function ProductDetailPage() {
     if (!product) return;
 
     setReviewsLoading(true);
-    fetch(`http://localhost:8000/api/reviews/?product=${product.id}`)
+    fetch(buildApiUrl(`/reviews/?product=${product.id}`))
       .then(res => res.json())
       .then(data => {
         const normalized = Array.isArray(data) ? data : (data?.results || []);
@@ -182,10 +184,10 @@ export default function ProductDetailPage() {
 
           <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
-              <button className="btn btn-primary" style={{ flex: 1 }}>Add to cart</button>
+              <AddToCartButton productId={product.id} className="btn btn-primary" style={{ flex: 1 }} />
               <button className="btn btn-outline">♡</button>
             </div>
-            <button className="btn btn-outline" style={{ width: '100%' }}>Buy now</button>
+            <AddToCartButton productId={product.id} mode="buyNow" className="btn btn-outline" style={{ width: '100%' }} />
           </div>
 
           <div className="card" style={{ padding: '1.5rem' }}>

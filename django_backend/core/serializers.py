@@ -142,7 +142,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
+        if not validated_data.get('role'):
+            validated_data['role'] = 'customer'
         user = User.objects.create_user(**validated_data)
+        if user.role == 'customer':
+            CustomerProfile.objects.get_or_create(user=user)
         return user
 
 

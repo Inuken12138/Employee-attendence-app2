@@ -23,6 +23,7 @@ export default function StoreHeader() {
       <nav className="nav-links">
         <Link className="nav-link" href="/">Shop</Link>
         <Link className="nav-link" href="/cat/products-products">Products</Link>
+        <Link className="nav-link" href="/kitchen-designer">Kitchen Designer</Link>
       </nav>
       <form onSubmit={handleSearch} style={{ flex: 1, maxWidth: '400px', margin: '0 2rem' }}>
         <input
@@ -41,6 +42,7 @@ export default function StoreHeader() {
         />
       </form>
       <div className="header-actions">
+        <Link className="btn btn-ghost" href="/cart">Cart</Link>
         <Link className="btn btn-ghost" href="/login">Sign in</Link>
         <Link className="btn btn-primary" href="/erp">ERP</Link>
       </div>

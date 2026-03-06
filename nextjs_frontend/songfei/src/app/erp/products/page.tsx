@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import NextImage from 'next/image';
+import Link from 'next/link';
 import useErrorPopup from '../../hooks/useErrorPopup';
 
 interface Category {
@@ -1200,6 +1201,9 @@ export default function ManageProducts() {
                         <button type="button" className="btn btn-outline" onClick={() => startEditProduct(product)}>
                           Edit
                         </button>
+                        <Link className="btn btn-outline" href={`/erp/products/${product.id}/designer`}>
+                          Designer settings
+                        </Link>
                         <button
                           type="button"
                           className="btn btn-outline"

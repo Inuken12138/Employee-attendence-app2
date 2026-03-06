@@ -82,6 +82,8 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('core.urls')),
+    path('api/cart/', include('commerce.urls')),
+    path('api/planner/', include('planner.urls')),
 ]
 
 if settings.DEBUG:

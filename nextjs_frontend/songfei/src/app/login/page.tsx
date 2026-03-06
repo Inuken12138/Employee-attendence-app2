@@ -1,7 +1,9 @@
 'use client';
 import { useState, FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useErrorPopup from '../hooks/useErrorPopup';
+import { buildApiUrl } from '@/lib/api';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -9,9 +11,18 @@ export default function LoginPage() {
   const router = useRouter();
   const { showErrorPopup } = useErrorPopup();
 
+  const getRedirectPath = () => {
+    if (typeof window === 'undefined') {
+      return '/erp';
+    }
+
+    const redirect = new URLSearchParams(window.location.search).get('redirect');
+    return redirect && redirect.startsWith('/') ? redirect : '/erp';
+  };
+
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
-    const res = await fetch('http://localhost:8000/api/login/', {
+    const res = await fetch(buildApiUrl('/login/'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
@@ -20,7 +31,7 @@ export default function LoginPage() {
     if (data.token) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('username', username);
-      router.push('/erp');
+      router.push(getRedirectPath());
     } else {
       showErrorPopup('Login failed');
     }
@@ -60,6 +71,11 @@ export default function LoginPage() {
             Sign in
           </button>
         </form>
+        <div style={{ marginTop: '1rem' }}>
+          <Link className="btn btn-outline" href="/register">
+            Create customer account
+          </Link>
+        </div>
       </div>
       <div className="card">
         <div className="pill">Quick Actions</div>

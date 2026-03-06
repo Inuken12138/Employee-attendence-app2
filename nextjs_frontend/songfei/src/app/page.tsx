@@ -14,6 +14,7 @@ export default function HomePage() {
           <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem', flexWrap: 'wrap' }}>
             <Link className="btn btn-primary" href="/cat/products-products">Browse All Products</Link>
             <Link className="btn btn-outline" href="/products">Search Products</Link>
+            <Link className="btn btn-outline" href="/kitchen-designer">Open Kitchen Designer</Link>
           </div>
         </div>
         <div className="card card-glass">
@@ -31,7 +32,7 @@ export default function HomePage() {
           </div>
           <div className="divider" />
           <p className="muted">
-            Explore our hand-picked essentials. The ERP experience remains available at /erp for internal operations.
+            Explore our hand-picked essentials. The ERP experience remains available at /erp for internal operations, and the new planner prototype now lives at /kitchen-designer.
           </p>
         </div>
       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -21,7 +21,7 @@ interface Product {
   ratingCount?: number | null;
 }
 
-export default function ProductsSearchPage() {
+function ProductsSearchContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get('query') || '';
   const [products, setProducts] = useState<Product[]>([]);
@@ -150,5 +150,13 @@ export default function ProductsSearchPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ProductsSearchPage() {
+  return (
+    <Suspense fallback={<div className="muted" style={{ padding: '2rem' }}>Loading products...</div>}>
+      <ProductsSearchContent />
+    </Suspense>
   );
 }
