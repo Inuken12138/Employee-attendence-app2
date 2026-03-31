@@ -105,8 +105,16 @@ from django.shortcuts import render
 from rest_framework import viewsets, permissions, generics, filters
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category, Review, Purchase, AttendanceRecord, AttendanceRecordEmployee, AttendanceShift
-from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer, WorkplaceSerializer, EmployeeFaceProfileSerializer, CategorySerializer, ReviewSerializer
+from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category, Review, Purchase, AttendanceRecord, AttendanceRecordEmployee, AttendanceShift, EmployeeRosterAssignment, RosterTemplate
+from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer, WorkplaceSerializer, EmployeeFaceProfileSerializer, CategorySerializer, ReviewSerializer, RosterTemplateSerializer
+from .utils import (
+    build_roster_schedule_lookup,
+    normalize_employee_name,
+    normalize_worker_id,
+    parse_attendance_date_range,
+    parse_sheet_generated_at,
+    resolve_roster_day,
+)
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -116,7 +124,9 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import ValidationError
 from django.db.models import Avg, Count
 from django.db import transaction
+from django.utils.dateparse import parse_date
 from django.utils import timezone
+from datetime import date
 import calendar
 import os
 import pandas as pd
@@ -133,6 +143,51 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     serializer_class = EmployeeSerializer
     #permission_classes = [permissions.IsAuthenticated, IsManager]
     permission_classes = []
+
+    def get_queryset(self):
+        return Employee.objects.select_related('roster_assignment__template').all()
+
+    @action(detail=True, methods=['post', 'delete'], url_path='roster-assignment')
+    def roster_assignment(self, request, pk=None):
+        employee = self.get_object()
+
+        if request.method.lower() == 'delete':
+            EmployeeRosterAssignment.objects.filter(employee=employee).delete()
+            refreshed_employee = self.get_queryset().get(pk=employee.pk)
+            return Response(self.get_serializer(refreshed_employee).data)
+
+        template_id = request.data.get('template_id')
+        if not template_id:
+            return Response({'error': 'template_id is required.'}, status=400)
+
+        try:
+            template = RosterTemplate.objects.get(pk=template_id)
+        except (TypeError, ValueError, RosterTemplate.DoesNotExist):
+            return Response({'error': 'Roster template not found.'}, status=404)
+
+        effective_start_date = parse_date(str(request.data.get('effective_start_date') or ''))
+        if effective_start_date is None:
+            return Response({'error': 'effective_start_date is required in YYYY-MM-DD format.'}, status=400)
+
+        EmployeeRosterAssignment.objects.update_or_create(
+            employee=employee,
+            defaults={
+                'template': template,
+                'effective_start_date': effective_start_date,
+            },
+        )
+
+        refreshed_employee = self.get_queryset().get(pk=employee.pk)
+        return Response(self.get_serializer(refreshed_employee).data)
+
+
+class RosterTemplateViewSet(viewsets.ModelViewSet):
+    queryset = RosterTemplate.objects.all()
+    serializer_class = RosterTemplateSerializer
+    permission_classes = []
+
+    def get_queryset(self):
+        return RosterTemplate.objects.annotate(usage_count=Count('assignments')).all()
 
 class InventoryItemViewSet(viewsets.ModelViewSet):
     queryset = InventoryItem.objects.all()
@@ -390,12 +445,129 @@ def _row_contains_tokens(row, tokens):
     return all(any(token in str(cell) for cell in row_text) for token in tokens)
 
 
-def _get_active_employee_by_worker_id(worker_id):
-    normalized_worker_id = str(worker_id or '').strip()
-    if not normalized_worker_id:
+def _find_first_sheet_text(df, token):
+    for row in df.itertuples(index=False):
+        for value in row:
+            if pd.isna(value):
+                continue
+            text = str(value).strip()
+            if token in text:
+                return text
+    return None
+
+
+def _build_attendance_period_payload(
+    year,
+    month,
+    last_day,
+    source_date_range=None,
+    sheet_generated_at=None,
+    date_range_start=None,
+    date_range_end=None,
+):
+    period_start = date_range_start or date(year, month, 1)
+    period_end = date_range_end or date(year, month, last_day)
+
+    return {
+        'year': year,
+        'month': month,
+        'days_in_month': last_day,
+        'date_range_start': period_start.isoformat(),
+        'date_range_end': period_end.isoformat(),
+        'source_date_range': source_date_range,
+        'sheet_generated_at': sheet_generated_at,
+    }
+
+
+def _resolve_attendance_period(df, year=None, month=None, filename=''):
+    source_date_range = _find_first_sheet_text(df, '考勤日期')
+    sheet_generated_at_text = _find_first_sheet_text(df, '制表时间')
+    parsed_start_date, parsed_end_date = parse_attendance_date_range(source_date_range)
+
+    if month is None:
+        month = parsed_start_date.month if parsed_start_date else _extract_month_from_filename(filename)
+    if month is None:
+        month = timezone.now().month
+
+    if year is None:
+        year = parsed_start_date.year if parsed_start_date else timezone.now().year
+
+    last_day = calendar.monthrange(year, month)[1]
+    matching_sheet_period = (
+        parsed_start_date is not None
+        and parsed_end_date is not None
+        and parsed_start_date.year == year
+        and parsed_start_date.month == month
+        and parsed_end_date.year == year
+        and parsed_end_date.month == month
+    )
+    if matching_sheet_period:
+        last_day = parsed_end_date.day
+
+    return _build_attendance_period_payload(
+        year,
+        month,
+        last_day,
+        source_date_range=source_date_range,
+        sheet_generated_at=parse_sheet_generated_at(sheet_generated_at_text),
+        date_range_start=parsed_start_date if matching_sheet_period else None,
+        date_range_end=parsed_end_date if matching_sheet_period else None,
+    )
+
+
+def _get_active_employee_by_identity(worker_id, employee_name):
+    normalized_worker_id = normalize_worker_id(worker_id)
+    normalized_employee_name = normalize_employee_name(employee_name)
+    if not normalized_worker_id or not normalized_employee_name:
         return None
 
-    return Employee.objects.filter(worker_id=normalized_worker_id, is_active=True).first()
+    candidates = Employee.objects.filter(worker_id=normalized_worker_id, is_active=True)
+    for candidate in candidates:
+        if normalize_employee_name(candidate.name) == normalized_employee_name:
+            return candidate
+    return None
+
+
+def _get_employee_roster_assignment(employee_obj):
+    if employee_obj is None:
+        return None
+
+    try:
+        assignment = employee_obj.roster_assignment
+    except EmployeeRosterAssignment.DoesNotExist:
+        return None
+
+    if assignment.template is None:
+        return None
+
+    return assignment
+
+
+def _serialize_payroll_roster_assignment(employee_obj):
+    assignment = _get_employee_roster_assignment(employee_obj)
+    if assignment is None:
+        return None
+
+    template = assignment.template
+    return {
+        'template_id': template.id,
+        'template_name': template.name,
+        'cycle_length_weeks': template.cycle_length_weeks,
+        'effective_start_date': assignment.effective_start_date.isoformat() if assignment.effective_start_date else None,
+        'schedule': template.schedule or [],
+    }
+
+
+def _resolve_assignment_roster_day(assignment, schedule_lookup, target_date):
+    if assignment is None or assignment.template is None or schedule_lookup is None:
+        return None
+
+    return resolve_roster_day(
+        schedule_lookup,
+        assignment.template.cycle_length_weeks,
+        assignment.effective_start_date,
+        target_date,
+    )
 
 
 def _record_employee_is_active(record_employee):
@@ -405,20 +577,21 @@ def _record_employee_is_active(record_employee):
             employee_obj = Employee.objects.filter(pk=record_employee.employee_id).first()
         return bool(employee_obj and employee_obj.is_active)
 
-    return _get_active_employee_by_worker_id(record_employee.worker_id) is not None
+    return _get_active_employee_by_identity(record_employee.worker_id, record_employee.employee_name) is not None
 
 
 def _parse_attendance_sheet_records(file_obj, year=None, month=None):
     df = pd.read_excel(file_obj, header=None)
+    period_payload = _resolve_attendance_period(
+        df,
+        year=year,
+        month=month,
+        filename=getattr(file_obj, 'name', ''),
+    )
 
-    if month is None:
-        month = _extract_month_from_filename(getattr(file_obj, 'name', ''))
-    if month is None:
-        month = timezone.now().month
-    if year is None:
-        year = timezone.now().year
-
-    last_day = calendar.monthrange(year, month)[1]
+    year = period_payload['year']
+    month = period_payload['month']
+    last_day = period_payload['days_in_month']
 
     results = []
     total_rows = df.shape[0]
@@ -481,22 +654,22 @@ def _parse_attendance_sheet_records(file_obj, year=None, month=None):
                 times.extend(cell_tokens)
             day_logs[str(day_int)] = times
 
-        matched_employee = _get_active_employee_by_worker_id(employee_id)
+        matched_employee = _get_active_employee_by_identity(employee_id, employee_name)
         if matched_employee is None:
             continue
 
         results.append({
+            'employee_db_id': matched_employee.id,
             'employee_id': employee_id,
             'worker_id': employee_id,
             'employee_name': employee_name,
             'department': department,
+            'roster_assignment': _serialize_payroll_roster_assignment(matched_employee),
             'day_logs': day_logs,
         })
 
     return {
-        'year': year,
-        'month': month,
-        'days_in_month': last_day,
+        **period_payload,
         'employees': results,
     }
 
@@ -521,7 +694,7 @@ def _serialize_attendance_record(record):
     last_day = calendar.monthrange(record.year, record.month)[1]
     employees_payload = []
 
-    for record_employee in record.employees.select_related('employee').prefetch_related('shifts'):
+    for record_employee in record.employees.select_related('employee', 'employee__roster_assignment__template').prefetch_related('shifts'):
         if not _record_employee_is_active(record_employee):
             continue
 
@@ -541,20 +714,29 @@ def _serialize_attendance_record(record):
             'worker_id': record_employee.worker_id,
             'employee_name': record_employee.employee_name,
             'department': record_employee.department,
+            'roster_assignment': _serialize_payroll_roster_assignment(getattr(record_employee, 'employee', None)),
             'days': day_map,
         })
 
     return {
-        'year': record.year,
-        'month': record.month,
+        **_build_attendance_period_payload(record.year, record.month, last_day),
         'status': record.status,
-        'days_in_month': last_day,
         'employees': employees_payload,
     }
 
 
+def _serialize_attendance_record_summary(record):
+    return {
+        'year': record.year,
+        'month': record.month,
+        'status': record.status,
+        'updated_at': record.updated_at.isoformat() if record.updated_at else None,
+        'label': f'{calendar.month_name[record.month]} {record.year}',
+    }
+
+
 def _coerce_status(value):
-    if value in ('present', 'absent', 'missing'):
+    if value in ('present', 'absent', 'missing', 'off'):
         return value
     return 'missing'
 
@@ -575,7 +757,32 @@ def _extract_day_payload(day_payload):
     }
 
 
+def _normalize_roster_off_day_payload(day_payload, roster_day):
+    if roster_day is None or roster_day.get('is_working') is not False:
+        return day_payload
+    if day_payload['raw_logs']:
+        return day_payload
+    if day_payload['morning_status'] != 'missing' or day_payload['afternoon_status'] != 'missing':
+        return day_payload
+
+    normalized_payload = dict(day_payload)
+    normalized_payload.update(
+        {
+            'morning_in': '',
+            'morning_out': '',
+            'afternoon_in': '',
+            'afternoon_out': '',
+            'morning_status': 'off',
+            'afternoon_status': 'off',
+        }
+    )
+    return normalized_payload
+
+
 def _validate_shift_for_final(day_payload, day_index, employee_label):
+    if day_payload['morning_status'] == 'off' and day_payload['afternoon_status'] == 'off':
+        return
+
     if day_payload['morning_status'] == 'missing' or day_payload['afternoon_status'] == 'missing':
         raise ValidationError(
             f"Missing shifts remain for {employee_label} on day {day_index}."
@@ -623,9 +830,20 @@ def _save_attendance_payload(payload, status):
             employee_name = str(employee_payload.get('employee_name') or '').strip()
             department = str(employee_payload.get('department') or '').strip()
 
-            employee_obj = _get_active_employee_by_worker_id(worker_id)
+            employee_obj = _get_active_employee_by_identity(worker_id, employee_name)
             if employee_obj is None:
                 continue
+
+            assignment = _get_employee_roster_assignment(employee_obj)
+            schedule_lookup = None
+            if assignment is not None:
+                try:
+                    schedule_lookup = build_roster_schedule_lookup(
+                        assignment.template.schedule,
+                        assignment.template.cycle_length_weeks,
+                    )
+                except ValueError:
+                    schedule_lookup = None
 
             record_employee = AttendanceRecordEmployee.objects.create(
                 record=record,
@@ -642,7 +860,13 @@ def _save_attendance_payload(payload, status):
                 except ValueError:
                     continue
 
-                normalized = _extract_day_payload(day_payload or {})
+                try:
+                    target_date = date(year, month, day_index)
+                except ValueError:
+                    continue
+
+                roster_day = _resolve_assignment_roster_day(assignment, schedule_lookup, target_date)
+                normalized = _normalize_roster_off_day_payload(_extract_day_payload(day_payload or {}), roster_day)
                 employee_label = worker_id or employee_name or 'Employee'
                 if status == 'final':
                     _validate_shift_for_final(normalized, day_index, employee_label)
@@ -751,3 +975,16 @@ class AttendanceRecordsDraftFetchView(APIView):
             return Response({'error': 'No attendance draft found.'}, status=404)
 
         return Response(_serialize_attendance_record(record))
+
+
+class AttendanceRecordsHistoryView(APIView):
+    def get(self, request):
+        records = sorted(
+            AttendanceRecord.objects.all(),
+            key=lambda record: (record.year, record.month, record.status == 'final', record.updated_at),
+            reverse=True,
+        )
+
+        return Response({
+            'records': [_serialize_attendance_record_summary(record) for record in records],
+        })

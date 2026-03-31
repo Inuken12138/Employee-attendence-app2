@@ -84,6 +84,7 @@ How to extend:
 from django.db import models
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
 from django.utils.text import slugify
 from PIL import Image, ImageOps
 import os
@@ -103,8 +104,14 @@ class Employee(models.Model):
     name = models.CharField(max_length=100)
     #position = models.CharField(max_length=100)
     base_salary = models.FloatField()
-    worker_id = models.CharField(max_length=50, unique=True, null=True, blank=True)
+    worker_id = models.CharField(max_length=50, null=True, blank=True)
     is_active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['worker_id', 'name'], name='unique_employee_worker_name'),
+        ]
+        ordering = ['name', 'id']
     
     def __str__(self):
         return self.name
@@ -139,7 +146,7 @@ class AttendanceRecordEmployee(models.Model):
     worker_id = models.CharField(max_length=50, blank=True)
 
     class Meta:
-        unique_together = ('record', 'worker_id')
+        unique_together = ('record', 'worker_id', 'employee_name')
 
     def __str__(self):
         return f"AttendanceRecordEmployee({self.worker_id or self.employee_name})"
@@ -149,6 +156,7 @@ class AttendanceShift(models.Model):
     STATUS_CHOICES = (
         ('present', 'Present'),
         ('absent', 'Absent'),
+        ('off', 'Off day'),
         ('missing', 'Missing'),
     )
 
@@ -167,6 +175,37 @@ class AttendanceShift(models.Model):
 
     def __str__(self):
         return f"AttendanceShift({self.record_employee_id}, day {self.day})"
+
+
+class RosterTemplate(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+    description = models.TextField(blank=True)
+    cycle_length_weeks = models.PositiveSmallIntegerField(default=1)
+    schedule = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name', 'id']
+
+    def __str__(self):
+        return self.name
+
+
+class EmployeeRosterAssignment(models.Model):
+    employee = models.OneToOneField(Employee, on_delete=models.CASCADE, related_name='roster_assignment')
+    template = models.ForeignKey(RosterTemplate, on_delete=models.SET_NULL, null=True, blank=True, related_name='assignments')
+    effective_start_date = models.DateField(default=timezone.localdate)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['employee_id']
+
+    def __str__(self):
+        template_name = self.template.name if self.template else 'No template'
+        return f'{self.employee.name} -> {template_name}'
 
 class InventoryItem(models.Model):
     item_code = models.CharField(max_length=50, blank=True)

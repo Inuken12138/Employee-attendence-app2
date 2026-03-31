@@ -35,12 +35,113 @@ Current Implementation
 """
 
 from rest_framework import serializers
-from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category, CustomerProfile, Review, Purchase
+from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category, CustomerProfile, Review, Purchase, RosterTemplate
+from .utils import normalize_employee_name, normalize_worker_id, summarize_roster_schedule, validate_roster_schedule
+
+
+def _serialize_roster_assignment(assignment):
+    template = assignment.template
+    if template is None:
+        return {
+            'template_id': None,
+            'template_name': None,
+            'cycle_length_weeks': None,
+            'effective_start_date': assignment.effective_start_date.isoformat() if assignment.effective_start_date else None,
+            'summary_lines': [],
+        }
+
+    return {
+        'template_id': template.id,
+        'template_name': template.name,
+        'cycle_length_weeks': template.cycle_length_weeks,
+        'effective_start_date': assignment.effective_start_date.isoformat() if assignment.effective_start_date else None,
+        'summary_lines': summarize_roster_schedule(template.schedule, template.cycle_length_weeks),
+    }
+
+
+class RosterTemplateSerializer(serializers.ModelSerializer):
+    usage_count = serializers.SerializerMethodField()
+    summary_lines = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RosterTemplate
+        fields = [
+            'id',
+            'name',
+            'description',
+            'cycle_length_weeks',
+            'schedule',
+            'is_active',
+            'usage_count',
+            'summary_lines',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'usage_count', 'summary_lines', 'created_at', 'updated_at']
+
+    def validate_cycle_length_weeks(self, value):
+        if value < 1 or value > 4:
+            raise serializers.ValidationError('Cycle length must be between 1 and 4 weeks.')
+        return value
+
+    def validate(self, attrs):
+        cycle_length_weeks = attrs.get(
+            'cycle_length_weeks',
+            self.instance.cycle_length_weeks if self.instance else 1,
+        )
+        raw_schedule = attrs.get('schedule', self.instance.schedule if self.instance else [])
+
+        try:
+            attrs['schedule'] = validate_roster_schedule(raw_schedule, cycle_length_weeks)
+        except ValueError as exc:
+            raise serializers.ValidationError({'schedule': str(exc)})
+
+        return attrs
+
+    def get_usage_count(self, obj):
+        annotated_usage_count = getattr(obj, 'usage_count', None)
+        if annotated_usage_count is not None:
+            return annotated_usage_count
+        return obj.assignments.count()
+
+    def get_summary_lines(self, obj):
+        return summarize_roster_schedule(obj.schedule, obj.cycle_length_weeks)
 
 class EmployeeSerializer(serializers.ModelSerializer):
+    roster_assignment = serializers.SerializerMethodField()
+
     class Meta:
         model = Employee
-        fields = '__all__'
+        fields = ['id', 'name', 'base_salary', 'worker_id', 'is_active', 'roster_assignment']
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        worker_id = normalize_worker_id(attrs.get('worker_id', getattr(self.instance, 'worker_id', None))) or None
+        employee_name = attrs.get('name', getattr(self.instance, 'name', ''))
+        attrs['worker_id'] = worker_id
+
+        if worker_id:
+            existing = Employee.objects.filter(worker_id=worker_id)
+            if self.instance:
+                existing = existing.exclude(pk=self.instance.pk)
+
+            normalized_name = normalize_employee_name(employee_name)
+            for employee in existing.only('id', 'name'):
+                if normalize_employee_name(employee.name) == normalized_name:
+                    raise serializers.ValidationError({
+                        'worker_id': 'Another employee already uses this worker ID and name combination.',
+                    })
+
+        return attrs
+
+    def get_roster_assignment(self, obj):
+        try:
+            assignment = obj.roster_assignment
+        except obj.__class__.roster_assignment.RelatedObjectDoesNotExist:
+            return None
+
+        return _serialize_roster_assignment(assignment)
 
 class InventoryItemSerializer(serializers.ModelSerializer):
     inventory_condition = serializers.SerializerMethodField()

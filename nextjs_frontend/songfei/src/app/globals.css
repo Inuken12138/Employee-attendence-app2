@@ -319,6 +319,103 @@ a {
   backdrop-filter: blur(14px);
 }
 
+.payroll-period-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.payroll-history-panel,
+.payroll-history-group {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.payroll-history-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.payroll-history-groups {
+  display: grid;
+  gap: 1rem;
+}
+
+.payroll-history-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--ink-3);
+}
+
+.payroll-history-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.payroll-history-chip {
+  border-radius: 16px;
+  border: 1px solid rgba(111, 213, 199, 0.2);
+  background: rgba(111, 213, 199, 0.08);
+  color: var(--ink-1);
+  padding: 0.8rem 0.95rem;
+  display: grid;
+  gap: 0.2rem;
+  text-align: left;
+  min-width: 140px;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.payroll-history-chip strong {
+  color: var(--accent-1);
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.payroll-history-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(111, 213, 199, 0.38);
+}
+
+.payroll-history-chip-draft {
+  border-color: rgba(242, 196, 111, 0.2);
+  background: rgba(242, 196, 111, 0.08);
+}
+
+.payroll-day-header {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 120px;
+}
+
+.payroll-day-heading {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+}
+
+.payroll-day-date {
+  font-size: 0.84rem;
+  color: var(--ink-1);
+  letter-spacing: 0.04em;
+}
+
+.payroll-day-weekday {
+  font-size: 0.74rem;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.payroll-day-header-weekend .payroll-day-weekday {
+  color: #f2c46f;
+}
+
 .payroll-table-row td {
   vertical-align: top;
 }
@@ -334,6 +431,39 @@ a {
 
 .payroll-day-cell-editable {
   min-width: 150px;
+}
+
+.payroll-day-cell-off {
+  min-width: 150px;
+}
+
+.payroll-off-day-card {
+  min-height: 100%;
+  border-radius: 14px;
+  border: 1px dashed rgba(245, 242, 234, 0.14);
+  background: linear-gradient(180deg, rgba(127, 136, 149, 0.18), rgba(58, 66, 78, 0.42));
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.payroll-off-day-title {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(245, 242, 234, 0.72);
+}
+
+.payroll-off-day-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink-1);
+}
+
+.payroll-off-day-copy {
+  color: var(--ink-3);
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 .payroll-shift-card {
@@ -395,6 +525,12 @@ a {
 
 .payroll-raw-logs {
   color: var(--ink-3);
+  font-size: 0.73rem;
+  line-height: 1.45;
+}
+
+.payroll-expected-shift {
+  color: rgba(111, 213, 199, 0.84);
   font-size: 0.73rem;
   line-height: 1.45;
 }
@@ -530,6 +666,10 @@ a {
 }
 
 @media (max-width: 900px) {
+  .payroll-period-grid {
+    grid-template-columns: 1fr;
+  }
+
   .payroll-time-grid {
     grid-template-columns: 1fr;
   }
@@ -1343,4 +1483,321 @@ a {
   height: 1px;
   background: var(--edge);
   margin: 1.6rem 0;
+}
+
+.employee-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 16, 0.78);
+  backdrop-filter: blur(16px);
+}
+
+.employee-modal-card {
+  width: min(1240px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  display: grid;
+  gap: 1.2rem;
+  background:
+    radial-gradient(circle at top left, rgba(111, 213, 199, 0.08), transparent 24%),
+    radial-gradient(circle at top right, rgba(242, 196, 111, 0.1), transparent 28%),
+    linear-gradient(180deg, rgba(17, 19, 26, 0.98), rgba(9, 11, 16, 0.98));
+  border: 1px solid rgba(245, 242, 234, 0.12);
+  box-shadow: var(--shadow-soft);
+}
+
+.employee-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.employee-modal-tabs {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.employee-modal-tab {
+  border-radius: 999px;
+  border: 1px solid var(--edge);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink-2);
+  padding: 0.65rem 1rem;
+  font-size: 0.86rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.employee-modal-tab:hover {
+  border-color: rgba(242, 196, 111, 0.28);
+  color: var(--ink-1);
+}
+
+.employee-modal-tab-active {
+  border-color: rgba(242, 196, 111, 0.52);
+  background: rgba(242, 196, 111, 0.14);
+  color: var(--ink-1);
+}
+
+.employee-editor-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.employee-status-panel,
+.employee-note-panel,
+.employee-roster-assignment-card,
+.roster-builder-panel,
+.employee-danger-zone {
+  border-radius: 20px;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.employee-status-panel {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+}
+
+.employee-status-actions {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.employee-status-chip {
+  border-radius: 999px;
+  border: 1px solid var(--edge);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink-2);
+  padding: 0.65rem 1rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.employee-status-chip-active {
+  border-color: rgba(111, 213, 199, 0.35);
+  background: rgba(111, 213, 199, 0.12);
+  color: #9cf0b9;
+}
+
+.employee-status-chip-inactive {
+  border-color: rgba(247, 176, 127, 0.35);
+  background: rgba(247, 176, 127, 0.12);
+  color: #f7b07f;
+}
+
+.employee-modal-actions {
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.employee-danger-zone {
+  border-color: rgba(255, 107, 107, 0.2);
+  background: linear-gradient(180deg, rgba(120, 28, 28, 0.16), rgba(22, 18, 24, 0.58));
+}
+
+.employee-roster-assignment-card {
+  background:
+    radial-gradient(circle at top right, rgba(159, 168, 255, 0.12), transparent 28%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.employee-roster-assignment-header,
+.roster-template-card-header,
+.roster-builder-header,
+.roster-day-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.roster-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.roster-template-card {
+  border-radius: 20px;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink-1);
+  padding: 1rem;
+  display: grid;
+  gap: 0.85rem;
+  text-align: left;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.roster-template-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(242, 196, 111, 0.28);
+}
+
+.roster-template-card-selected {
+  border-color: rgba(242, 196, 111, 0.52);
+  background: linear-gradient(180deg, rgba(242, 196, 111, 0.1), rgba(255, 255, 255, 0.05));
+}
+
+.roster-template-card-title,
+.roster-day-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.roster-template-card-meta,
+.roster-day-copy {
+  color: var(--ink-2);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.roster-summary-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.roster-summary-line {
+  border-radius: 12px;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(8, 9, 14, 0.36);
+  color: var(--ink-2);
+  padding: 0.55rem 0.7rem;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.roster-builder-panel {
+  background:
+    radial-gradient(circle at top left, rgba(111, 213, 199, 0.08), transparent 24%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.roster-preset-strip,
+.roster-week-tabs,
+.roster-day-actions,
+.roster-day-meta,
+.roster-mini-time-chip-strip {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.roster-week-tabs {
+  margin-top: 1rem;
+}
+
+.roster-week-tab {
+  border-radius: 14px;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink-2);
+  padding: 0.7rem 0.95rem;
+  font-size: 0.86rem;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.roster-week-tab-active {
+  border-color: rgba(111, 213, 199, 0.35);
+  background: rgba(111, 213, 199, 0.12);
+  color: var(--ink-1);
+}
+
+.roster-day-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.95rem;
+}
+
+.roster-day-card {
+  border-radius: 20px;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.95rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.roster-day-card-off {
+  background: rgba(10, 12, 18, 0.74);
+}
+
+.roster-mini-time-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 0.8rem;
+}
+
+.roster-mini-time {
+  border-radius: 16px;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(8, 9, 14, 0.36);
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.roster-mini-time-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: center;
+  color: var(--ink-3);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.roster-mini-time-header strong {
+  color: var(--accent-1);
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
+}
+
+.roster-mini-time-selects {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.roster-mini-time-selects .select {
+  padding: 0.65rem 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .employee-modal-card {
+    width: min(100%, 96vw);
+  }
+
+  .employee-modal-header,
+  .employee-status-panel,
+  .employee-roster-assignment-header,
+  .roster-builder-header,
+  .roster-day-header {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .roster-mini-time-grid {
+    grid-template-columns: 1fr;
+  }
 }

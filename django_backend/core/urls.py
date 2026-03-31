@@ -40,7 +40,7 @@ Current Implementation
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import EmployeeViewSet, InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView, AttendanceRecordsParseView, AttendanceRecordsSaveView, AttendanceRecordsSaveDraftView, AttendanceRecordsFetchView, AttendanceRecordsDraftFetchView, WorkplaceViewSet, FaceEnrollView, FaceVerifyView, CategoryViewSet, ReviewViewSet
+from .views import EmployeeViewSet, InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView, AttendanceRecordsParseView, AttendanceRecordsSaveView, AttendanceRecordsSaveDraftView, AttendanceRecordsFetchView, AttendanceRecordsDraftFetchView, AttendanceRecordsHistoryView, WorkplaceViewSet, FaceEnrollView, FaceVerifyView, CategoryViewSet, ReviewViewSet, RosterTemplateViewSet
 from rest_framework.authtoken.views import obtain_auth_token
 
 import logging
@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 router = DefaultRouter()
 logger.debug("Registering EmployeeViewSet at /employees/")
 router.register(r'employees', EmployeeViewSet)
+router.register(r'roster-templates', RosterTemplateViewSet)
 print("Debug: Registering InventoryItemViewSet at /inventory/")  # Debug print
 router.register(r'inventory', InventoryItemViewSet)
 print("Debug: Registering ProductViewSet at /products/")  # Debug print
@@ -70,6 +71,7 @@ urlpatterns = [
    path('payroll/attendance-records/parse/', AttendanceRecordsParseView.as_view(), name='attendance-records-parse'),
    path('payroll/attendance-records/save/', AttendanceRecordsSaveView.as_view(), name='attendance-records-save'),
    path('payroll/attendance-records/save-draft/', AttendanceRecordsSaveDraftView.as_view(), name='attendance-records-save-draft'),
+   path('payroll/attendance-records/history/', AttendanceRecordsHistoryView.as_view(), name='attendance-records-history'),
    path('payroll/attendance-records/', AttendanceRecordsFetchView.as_view(), name='attendance-records-fetch'),
    path('payroll/attendance-records/drafts/', AttendanceRecordsDraftFetchView.as_view(), name='attendance-records-draft-fetch'),
    path('face/enroll/', FaceEnrollView.as_view(), name='face-enroll'),
