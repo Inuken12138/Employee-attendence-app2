@@ -11,6 +11,7 @@ from planner.models import (
     KitchenValidationRun,
     KitchenProductionAsset,
 )
+from planner.taxonomy import planner_path_is_valid
 
 
 class KitchenProductionAssetSerializer(serializers.ModelSerializer):
@@ -80,6 +81,9 @@ class KitchenDesignerProductProfileSerializer(serializers.ModelSerializer):
             'is_enabled',
             'catalog_state',
             'planner_role',
+            'planner_root_category',
+            'planner_group_category',
+            'planner_leaf_category',
             'glb_file',
             'glb_file_url',
             'width_mm',
@@ -113,6 +117,17 @@ class KitchenDesignerProductProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Product not found.')
         return value
 
+    def validate(self, attrs):
+        instance = getattr(self, 'instance', None)
+        root_category = attrs.get('planner_root_category', getattr(instance, 'planner_root_category', '')) or ''
+        group_category = attrs.get('planner_group_category', getattr(instance, 'planner_group_category', '')) or ''
+        leaf_category = attrs.get('planner_leaf_category', getattr(instance, 'planner_leaf_category', '')) or ''
+
+        if not planner_path_is_valid(root_category, group_category, leaf_category):
+            raise serializers.ValidationError('Planner category path is invalid for the current hardcoded planner taxonomy.')
+
+        return attrs
+
     def get_glb_file_url(self, obj):
         if obj.glb_file:
             request = self.context.get('request')
@@ -136,6 +151,9 @@ class PlannerCatalogProductSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     planner_profile_id = serializers.IntegerField(source='kitchen_designer_profile.id', read_only=True)
     planner_role = serializers.CharField(source='kitchen_designer_profile.planner_role', read_only=True)
+    planner_root_category = serializers.CharField(source='kitchen_designer_profile.planner_root_category', read_only=True)
+    planner_group_category = serializers.CharField(source='kitchen_designer_profile.planner_group_category', read_only=True)
+    planner_leaf_category = serializers.CharField(source='kitchen_designer_profile.planner_leaf_category', read_only=True)
     width_mm = serializers.IntegerField(source='kitchen_designer_profile.width_mm', read_only=True)
     depth_mm = serializers.IntegerField(source='kitchen_designer_profile.depth_mm', read_only=True)
     height_mm = serializers.IntegerField(source='kitchen_designer_profile.height_mm', read_only=True)
@@ -155,6 +173,9 @@ class PlannerCatalogProductSerializer(serializers.ModelSerializer):
             'image_url',
             'planner_profile_id',
             'planner_role',
+            'planner_root_category',
+            'planner_group_category',
+            'planner_leaf_category',
             'width_mm',
             'depth_mm',
             'height_mm',

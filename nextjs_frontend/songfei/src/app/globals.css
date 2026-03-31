@@ -302,6 +302,243 @@ a {
   background: rgba(159, 168, 255, 0.08);
 }
 
+.payroll-table-shell {
+  overflow: auto;
+}
+
+.payroll-records-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.payroll-records-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(11, 12, 16, 0.94);
+  backdrop-filter: blur(14px);
+}
+
+.payroll-table-row td {
+  vertical-align: top;
+}
+
+.payroll-table-cell {
+  min-width: 170px;
+}
+
+.payroll-day-cell {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.payroll-day-cell-editable {
+  min-width: 150px;
+}
+
+.payroll-shift-card {
+  width: 100%;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  border-radius: 14px;
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.3rem;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink-1);
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.payroll-shift-card:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.payroll-shift-card-clickable {
+  cursor: pointer;
+}
+
+.payroll-shift-card-clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(7, 8, 13, 0.18);
+}
+
+.payroll-shift-card-locked {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(245, 242, 234, 0.08);
+}
+
+.payroll-shift-card-missing {
+  background: linear-gradient(180deg, rgba(199, 87, 87, 0.95), rgba(147, 55, 55, 0.98));
+  border-color: rgba(255, 184, 184, 0.24);
+  color: #fff5f2;
+}
+
+.payroll-shift-card-resolved {
+  background: linear-gradient(180deg, rgba(44, 112, 83, 0.96), rgba(24, 72, 53, 0.98));
+  border-color: rgba(132, 223, 179, 0.22);
+  color: #effef2;
+}
+
+.payroll-shift-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  opacity: 0.78;
+}
+
+.payroll-shift-value {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.payroll-raw-logs {
+  color: var(--ink-3);
+  font-size: 0.73rem;
+  line-height: 1.45;
+}
+
+.payroll-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 8, 17, 0.76);
+  backdrop-filter: blur(14px);
+}
+
+.payroll-modal-card {
+  width: min(760px, 94vw);
+  display: grid;
+  gap: 1.1rem;
+  background:
+    radial-gradient(circle at top right, rgba(242, 196, 111, 0.09), transparent 28%),
+    linear-gradient(180deg, rgba(17, 19, 26, 0.98), rgba(9, 11, 16, 0.98));
+}
+
+.payroll-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.payroll-raw-log-panel {
+  border-radius: 18px;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.95rem 1rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.payroll-raw-log-copy {
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.payroll-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.payroll-time-card {
+  border-radius: 18px;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.payroll-time-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.payroll-time-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--ink-3);
+}
+
+.payroll-time-help {
+  margin-top: 0.3rem;
+  color: var(--ink-3);
+  font-size: 0.82rem;
+}
+
+.payroll-time-preview {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  color: var(--accent-1);
+  white-space: nowrap;
+}
+
+.payroll-time-selects {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.payroll-time-select {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--ink-3);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+.payroll-time-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.payroll-time-chip {
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink-2);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.payroll-time-chip:hover {
+  border-color: rgba(111, 213, 199, 0.4);
+  color: var(--ink-1);
+}
+
+.payroll-time-chip-muted {
+  color: var(--ink-3);
+}
+
+.payroll-modal-actions {
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .payroll-time-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .payroll-modal-header {
+    flex-direction: column;
+  }
+}
+
 .stat {
   display: flex;
   flex-direction: column;
@@ -318,6 +555,696 @@ a {
   text-transform: uppercase;
   letter-spacing: 0.25em;
   font-size: 0.7rem;
+}
+
+.planner-stage-shell {
+  padding: 1.2rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.planner-stage-shell-copy {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.planner-stage-shell-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+}
+
+.planner-stage-shell-subtitle {
+  color: var(--ink-2);
+  max-width: 70ch;
+}
+
+.planner-stage-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.planner-stage-tab {
+  border: 1px solid var(--edge);
+  background: rgba(10, 13, 18, 0.78);
+  border-radius: 18px;
+  padding: 1rem;
+  color: var(--ink-2);
+  display: grid;
+  gap: 0.35rem;
+  text-align: left;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.planner-stage-tab:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.planner-stage-tab:not(:disabled):hover {
+  transform: translateY(-1px);
+  border-color: rgba(111, 213, 199, 0.35);
+}
+
+.planner-stage-tab-active {
+  background: linear-gradient(135deg, rgba(242, 196, 111, 0.16), rgba(159, 168, 255, 0.12));
+  border-color: rgba(242, 196, 111, 0.55);
+  color: var(--ink-1);
+}
+
+.planner-stage-tab-complete {
+  border-color: rgba(111, 213, 199, 0.35);
+}
+
+.planner-stage-tab-index {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245, 242, 234, 0.08);
+  border: 1px solid var(--edge);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.planner-stage-tab-label {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.planner-stage-tab-caption {
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.planner-subheader {
+  padding: 1rem 1.2rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.planner-subheader-main {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.planner-subheader-lineup {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.planner-subheader-meta {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.planner-height-field {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--ink-3);
+}
+
+.planner-height-field .input {
+  min-width: 180px;
+}
+
+.planner-room-summary {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: var(--ink-2);
+  font-size: 0.92rem;
+}
+
+.planner-subheader-actions {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.planner-subheader-note {
+  max-width: 36rem;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.planner-chip {
+  border-radius: 999px;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--edge);
+  background: rgba(245, 242, 234, 0.05);
+  color: var(--ink-2);
+  font-size: 0.82rem;
+}
+
+.planner-chip-active {
+  color: var(--ink-1);
+  border-color: rgba(242, 196, 111, 0.45);
+  background: rgba(242, 196, 111, 0.12);
+}
+
+.planner-price {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.planner-price-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  color: var(--ink-3);
+}
+
+.planner-price-value {
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 2vw, 2rem);
+  color: var(--accent-1);
+}
+
+.planner-price-note {
+  max-width: 24rem;
+  color: var(--ink-3);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.planner-price-sidebar {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(245, 242, 234, 0.08);
+  margin-bottom: 1rem;
+}
+
+.planner-stage-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.planner-stage-layout-room {
+  grid-template-columns: minmax(0, 1fr) 272px;
+  align-items: stretch;
+}
+
+.planner-stage-layout-room-with-drawer {
+  grid-template-columns: 340px minmax(0, 1fr) 272px;
+}
+
+.planner-stage-sidebar {
+  display: grid;
+  gap: 1rem;
+}
+
+.planner-catalog-shell {
+  padding: 0.85rem 1rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.planner-catalog-toolbar {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.planner-catalog-action {
+  min-width: 108px;
+  border-radius: 14px;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink-1);
+  padding: 0.8rem 0.9rem;
+  display: grid;
+  gap: 0.45rem;
+  justify-items: center;
+  font-size: 0.82rem;
+}
+
+.planner-catalog-action:disabled {
+  opacity: 0.7;
+}
+
+.planner-catalog-action-active {
+  border-color: rgba(88, 202, 255, 0.4);
+  background: rgba(88, 202, 255, 0.12);
+}
+
+.planner-catalog-action-icon {
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 12, 16, 0.24);
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.planner-catalog-megamenu {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.2rem;
+  padding: 1.1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(18, 20, 28, 0.92);
+  box-shadow: 0 18px 42px rgba(7, 8, 13, 0.28);
+}
+
+.planner-catalog-column {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.planner-catalog-column-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.planner-catalog-column-items {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.planner-catalog-leaf {
+  font-size: 0.92rem;
+}
+
+.planner-catalog-leaf-button {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-2);
+  text-align: left;
+  padding: 0.35rem 0.45rem;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.planner-catalog-leaf-button:hover {
+  color: var(--ink-1);
+  border-color: rgba(245, 242, 234, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.planner-catalog-leaf-selected {
+  color: var(--accent-2);
+  border-color: rgba(88, 202, 255, 0.32);
+  background: rgba(88, 202, 255, 0.12);
+}
+
+.planner-catalog-leaf-muted {
+  color: var(--ink-2);
+  opacity: 0.88;
+}
+
+.planner-product-drawer {
+  padding: 1rem;
+  display: grid;
+  gap: 0.8rem;
+  align-content: start;
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+}
+
+.planner-product-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.planner-product-breadcrumb {
+  margin-top: 0.65rem;
+  color: var(--ink-2);
+  font-size: 0.92rem;
+}
+
+.planner-product-drawer-meta {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--ink-3);
+  font-size: 0.82rem;
+}
+
+.planner-product-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.planner-product-card {
+  border: 1px solid rgba(245, 242, 234, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 18px;
+  padding: 0.85rem;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 0.8rem;
+  text-align: left;
+  color: var(--ink-1);
+}
+
+.planner-product-card-media {
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  min-height: 76px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.planner-product-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.planner-product-card-copy {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.planner-product-card-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.planner-product-badge {
+  border-radius: 999px;
+  padding: 0.18rem 0.5rem;
+  background: rgba(88, 202, 255, 0.16);
+  color: #8edfff;
+  font-size: 0.72rem;
+}
+
+.planner-product-card-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
+}
+
+.planner-node-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(88, 202, 255, 0.18);
+  box-shadow: 0 10px 24px rgba(84, 74, 56, 0.14);
+}
+
+.planner-node-action {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(55, 47, 36, 0.14);
+  background: #ffffff;
+  color: #3a3228;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.planner-node-action-active {
+  background: #58caff;
+  color: #ffffff;
+  border-color: rgba(88, 202, 255, 0.55);
+}
+
+.planner-node-action-icon {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.planner-rotation-indicator {
+  padding: 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.planner-rotation-ring {
+  width: 76px;
+  height: 76px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 10px 24px rgba(84, 74, 56, 0.16);
+}
+
+.planner-rotation-ring-inner {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #2f2a23;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.planner-sidebar-title {
+  font-weight: 700;
+  margin-bottom: 0.45rem;
+}
+
+.planner-sidebar-copy {
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.planner-room-dimension-list {
+  display: grid;
+  gap: 0.55rem;
+  color: var(--ink-2);
+  font-size: 0.93rem;
+}
+
+.planner-floorplan {
+  padding: 1.1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.planner-floorplan-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.planner-floorplan-stats {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--ink-3);
+  font-size: 0.88rem;
+  text-align: right;
+}
+
+.planner-floorplan-svg {
+  width: 100%;
+  height: auto;
+  border-radius: 24px;
+}
+
+.planner-floorplan-hint {
+  color: var(--ink-3);
+  font-size: 0.88rem;
+}
+
+.planner-measurement-pill {
+  border: 1px solid rgba(245, 242, 234, 0.1);
+  background: rgba(8, 9, 14, 0.92);
+  color: var(--ink-1);
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  box-shadow: var(--shadow-tight);
+}
+
+.planner-measurement-input {
+  width: 6.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(111, 213, 199, 0.35);
+  background: rgba(8, 9, 14, 0.96);
+  color: var(--ink-1);
+  padding: 0.45rem 0.7rem;
+  text-align: center;
+}
+
+.planner-scene-shell {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--edge);
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.72), transparent 48%),
+    radial-gradient(circle at 85% 18%, rgba(242, 196, 111, 0.16), transparent 24%),
+    linear-gradient(180deg, #f4f0e7 0%, #ece7df 58%, #e8e2d8 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.44), 0 24px 60px rgba(7, 8, 13, 0.18);
+}
+
+.planner-stage-layout-room .planner-scene-shell {
+  min-height: 0;
+}
+
+.planner-scene-overlay {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem 0.95rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(111, 101, 80, 0.12);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 28px rgba(84, 74, 56, 0.12);
+  color: #372f24;
+}
+
+.planner-scene-overlay span {
+  color: rgba(55, 47, 36, 0.72);
+  font-size: 0.84rem;
+}
+
+.planner-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) 320px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.planner-review-main {
+  display: grid;
+  gap: 1rem;
+}
+
+.planner-review-placeholders {
+  display: grid;
+  gap: 1rem;
+}
+
+.planner-review-sidebar {
+  display: grid;
+  gap: 1rem;
+}
+
+.planner-placeholder-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.planner-placeholder-frame {
+  min-height: 144px;
+  border-radius: 18px;
+  border: 1px dashed rgba(245, 242, 234, 0.18);
+  background:
+    linear-gradient(135deg, rgba(111, 213, 199, 0.12), transparent),
+    radial-gradient(circle at top right, rgba(242, 196, 111, 0.16), transparent 55%),
+    rgba(8, 9, 14, 0.76);
+}
+
+.planner-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(7, 8, 13, 0.75);
+  backdrop-filter: blur(16px);
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.planner-modal {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 1rem;
+}
+
+.planner-shape-option {
+  border: 1px solid rgba(242, 196, 111, 0.32);
+  border-radius: 20px;
+  background: rgba(8, 9, 14, 0.8);
+  color: var(--ink-1);
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+}
+
+.planner-shape-option-preview {
+  width: 96px;
+  min-width: 96px;
+  height: 96px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, rgba(159, 168, 255, 0.14), rgba(111, 213, 199, 0.08));
+  border: 1px solid rgba(245, 242, 234, 0.08);
+}
+
+.planner-shape-option-rect {
+  width: 64px;
+  height: 48px;
+  border: 2px solid rgba(242, 196, 111, 0.8);
+  border-radius: 12px;
+  background: rgba(242, 196, 111, 0.08);
+}
+
+.planner-shape-option-copy {
+  display: grid;
+  gap: 0.4rem;
+  text-align: left;
+}
+
+.planner-shape-option-copy span {
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+  .planner-stage-layout,
+  .planner-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-stage-layout-room-with-drawer {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-catalog-megamenu {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .planner-stage-tabs {
+    grid-template-columns: 1fr;
+  }
 }
 
 .sidebar {

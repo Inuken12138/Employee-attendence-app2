@@ -1401,6 +1401,234 @@ This gives the project a realistic vertical slice with a working store cart, aut
 
 ---
 
+## MVP implementation update — room setup and stage shell
+
+This section narrows the first interactive planner milestone to the room-definition flow shown in the reference screenshots. The goal is not full kitchen planning yet. The goal is to ship a strong room-setup experience with a clear 2D-to-3D transition and a stable page shell that later cabinet-placement work can plug into.
+
+### MVP scope lock for this slice
+- Support exactly one room shape: rectangular room with independently adjustable walls.
+- Start in a 2D top-down room editor under `Define your space`.
+- Let the user resize the room in two ways:
+	- drag a wall side directly in the floor plan
+	- click a visible measurement label and enter an exact value
+- Keep 4 wall measurements visible at all times in the 2D editor.
+- Each of the 4 walls can be resized independently; parallel walls do not auto-sync.
+- Keep the top stage header visible at all times:
+	- `Define your space`
+	- `Make it yours`
+	- `Make it happen`
+- Keep the price estimate visible in all stages, but allow its placement to change by stage.
+- `Make it yours` must switch the user from the 2D editor into a 3D room view powered by Three.js / React Three Fiber.
+- `Make it happen` must display placeholder elevation/image cards until cabinet placement exists, establishing the content structure now for later cabinet imagery.
+
+### Explicitly out of scope for this slice
+- Non-rectangular room shapes (rectangular only, but with independent wall adjustment).
+- Doors, windows, pillars, plumbing points, and other room constraints.
+- Cabinet placement logic.
+- Validation engine.
+- Final production drawings.
+- Full cabinet elevation generation.
+
+For the first pass, `Make it happen` will show placeholder elevation/image cards for future front, side, and top-facing views, establishing the content region now so later cabinet imagery can drop in without layout redesign.
+
+### Experience contract
+
+#### 1. Persistent page shell
+- The main planner header always stays visible.
+- The stage tabs are part of the header and behave like a wizard with clear active-state styling.
+- The blue `Continue` CTA advances to the next stage.
+- Clicking a stage label should allow backward navigation to any previous stage freely.
+- Forward navigation (clicking a future stage or pressing `Continue`) should be allowed only after the current stage has the minimum required data (e.g., valid room dimensions).
+
+#### 2. Stage: `Define your space`
+- The subheader contains:
+	- `Room shape`
+	- future placeholders for `Define space`, `Elements`, `Openings`, `Search`
+	- ceiling-height control
+	- price estimate on the right
+	- `Continue` CTA
+- For the MVP, only `Room shape` is interactive.
+- Clicking `Room shape` opens a shape picker with only one available option: square/rectangular room.
+- Selecting that option initializes the floor plan with default dimensions.
+- Recommended default room seed:
+	- width: `4000 mm`
+	- depth: `4000 mm`
+	- ceiling height: `2500 mm`
+
+#### 3. 2D floor-plan editor behavior
+- Render a centered top-down floor plan with a clear floor fill and wall outline.
+- Show 4 measurement labels, one for each wall:
+	- top
+	- right
+	- bottom
+	- left
+- Each wall dimension is independent and can be adjusted separately.
+- The user can drag one wall at a time.
+- While dragging:
+	- the active wall highlights
+	- the room redraws continuously
+	- the affected measurement updates live
+- Dragging the top or bottom wall changes the vertical room dimension (depth).
+- Dragging the left or right wall changes the horizontal room dimension (width).
+- Apply minimum and maximum room-size guards so individual walls cannot collapse or become unreasonable.
+- Recommended initial guardrails per wall:
+	- min: `1500 mm`
+	- max: `10000 mm`
+
+#### 4. Direct measurement editing behavior
+- Clicking a measurement label turns it into an inline numeric input.
+- The input should accept millimeters only for the MVP.
+- Pressing `Enter`, clicking `Apply`, or blurring the field commits the new dimension.
+- Pressing `Escape` cancels the edit and restores the prior value.
+- Invalid values should be rejected with inline validation feedback.
+- Changing any label updates only that wall; no mirroring or auto-sync occurs.
+- Each wall can be set independently to any value within the allowed range.
+
+#### 5. Stage: `Make it yours`
+- The user reaches this stage by:
+	- clicking the `Make it yours` stage label, or
+	- clicking the blue `Continue` button from `Define your space`
+- This stage switches from 2D to a 3D room view.
+- Use React Three Fiber to render:
+	- floor plane
+	- 4 walls
+	- simple neutral materials
+	- basic camera controls
+- The room geometry must be generated directly from the width, depth, and ceiling-height values created in the 2D stage.
+- The price estimate remains visible in the top-right subheader in this stage.
+- For the MVP, this stage is a room-view milestone, not a cabinet-placement milestone yet.
+
+#### 6. Stage: `Make it happen`
+- This stage should reuse the persistent header.
+- The price estimate moves into the right sidebar instead of staying in the horizontal subheader.
+- The main content should be structured so later review artifacts can be dropped in without redesign.
+- Initial page layout recommendation:
+	- left/main area: 3D room preview
+	- secondary content area: placeholder cards for future front/elevation images
+	- right sidebar: price summary and next-step actions
+- For this MVP slice, placeholder elevation/image cards are acceptable until cabinet placement exists.
+
+### State model for the MVP slice
+- `stage`: `define-space | make-it-yours | make-it-happen`
+- `roomShape`: `rectangle`
+- `room.widthMm`
+- `room.depthMm`
+- `room.heightMm`
+- `ui.activeWall`: `top | right | bottom | left | null`
+- `ui.editingMeasurement`: `top | right | bottom | left | null`
+- `ui.dragState`
+- `pricing.estimatedTotal`
+
+This state should live in the dedicated planner store so both the 2D canvas and the 3D scene read from one source of truth.
+
+### Frontend implementation plan
+
+#### Slice A — planner shell and navigation
+1. Build a planner page shell that includes:
+	- persistent top header
+	- stage tabs
+	- stage-specific subheader region
+	- shared price display contract
+2. Add stage navigation rules and `Continue` progression.
+3. Store active stage in the planner state so it survives component remounts.
+
+#### Slice B — room shape selection
+1. Add `Room shape` action in the `Define your space` subheader.
+2. Open a shape chooser modal/panel with only one selectable shape.
+3. On selection, initialize the room geometry with default dimensions.
+4. Keep this picker architected for future additional shapes, but do not expose them yet.
+
+#### Slice C — 2D floor plan rendering
+1. Render the room in SVG or canvas-based 2D top view.
+2. Draw wall edges, floor fill, and measurement guides.
+3. Add 4 always-visible measurement labels.
+4. Add hit areas/drag handles for each wall.
+
+SVG is the better fit for this slice because measurement labels, guide lines, and pointer hit areas are simpler to manage than in the initial Three.js implementation.
+
+#### Slice D — resize interactions
+1. Implement pointer drag on each wall.
+2. Convert pixel delta into millimeter delta using a stable editor scale.
+3. Clamp room dimensions to allowed range per individual wall.
+4. Update the affected wall measurement during drag; other walls remain independent.
+5. Show active-wall styling during interaction.
+
+#### Slice E — direct numeric measurement editing
+1. Make each measurement label clickable.
+2. Replace the label with an inline input while editing.
+3. Commit valid input back into the planner store.
+4. Each wall updates independently; no synchronized mirroring occurs.
+5. Restore the label after successful commit or cancel.
+
+#### Slice F — 3D room scene
+1. Add a React Three Fiber scene to the `Make it yours` stage.
+2. Generate geometry from the same room dimensions used by the 2D editor.
+3. Add orbit controls with a constrained camera.
+4. Add a simple floor material and neutral wall material.
+5. Keep the 3D scene reactive so dimension edits made in stage 1 appear immediately when entering stage 2.
+
+#### Slice G — `Make it happen` review shell
+1. Build the page layout now, even if some content is placeholder.
+2. Put the price summary in the right sidebar.
+3. Keep the 3D preview visible.
+4. Add placeholder tiles for future front-facing cabinet/elevation imagery.
+5. Add CTA placeholders for future proceed flows.
+
+### Proposed component/file breakdown
+
+#### App routes
+- `src/app/kitchen-designer/[projectId]/page.tsx`
+	- stage shell and main orchestration
+- `src/app/kitchen-designer/[projectId]/review/page.tsx`
+	- `Make it happen` review shell if kept as a separate route
+
+#### Suggested feature components
+- `src/features/kitchen-designer/components/PlannerHeader.tsx`
+- `src/features/kitchen-designer/components/PlannerSubheader.tsx`
+- `src/features/kitchen-designer/components/RoomShapePicker.tsx`
+- `src/features/kitchen-designer/components/FloorPlanEditor2D.tsx`
+- `src/features/kitchen-designer/components/MeasurementLabel.tsx`
+- `src/features/kitchen-designer/components/RoomScene3D.tsx`
+- `src/features/kitchen-designer/components/PlannerPriceSummary.tsx`
+- `src/features/kitchen-designer/components/PlannerReviewShell.tsx`
+
+#### Suggested state modules
+- `src/features/kitchen-designer/store/plannerStore.ts`
+- `src/features/kitchen-designer/lib/roomGeometry.ts`
+- `src/features/kitchen-designer/lib/measurementMath.ts`
+
+### Acceptance criteria for this MVP slice
+- User can start with a rectangular room with independently adjustable walls.
+- User can drag any wall and see the dimension change live; each wall updates independently.
+- User can click any measurement and type an exact value; changes affect only that wall.
+- Each of the 4 walls can be set to any value independently with no auto-sync.
+- The room remains rectangular at all times (4 perpendicular sides, but with independent width/depth).
+- `Continue` moves the user from 2D room definition to 3D room preview.
+- The same room dimensions appear correctly in the 3D view.
+- The page shell preserves the 3-stage header throughout the flow.
+- Price display remains present in all stages, with stage-specific placement.
+
+### Recommended testing strategy for this slice
+- Unit-test dimension math and clamping behavior per wall.
+- Component-test measurement editing and independent wall updates.
+- Add Playwright coverage for:
+	- selecting room shape
+	- dragging a wall and seeing live measurement updates
+	- clicking a measurement and entering a precise dimension
+	- dragging different walls independently without sync
+	- pressing `Continue` and landing in the 3D stage
+	- preserving room dimensions between stage changes
+	- clicking stage labels to jump backward
+	- confirming forward jumps are blocked without valid data
+
+### Clarifications resolved
+1. ✅ **Make it happen stage content**: Will show placeholder elevation/image cards until cabinet placement exists, establishing the content region now for future cabinet imagery.
+2. ✅ **Initial room default**: Will remain `4000 mm × 4000 mm × 2500 mm`.
+3. ✅ **Stage navigation**: Users can jump backward freely to any previous stage by clicking stage labels. Forward navigation (via stage labels or `Continue` button) is allowed only after valid data exists in the current stage.
+4. ✅ **Room shape flexibility**: Removed square-room limitation; each wall can be elongated independently to any value within guardrails (1500–10000 mm per wall).
+
+---
+
 ## Next step
 Use the new concrete architecture above to begin implementation with the first vertical slice:
 

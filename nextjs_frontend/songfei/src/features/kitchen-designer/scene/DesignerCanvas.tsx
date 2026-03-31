@@ -34,8 +34,9 @@ export default function DesignerCanvas() {
           <ProductNode
             key={node.nodeId}
             node={node}
+            room={room}
             isSelected={selectedNodeId === node.nodeId}
-            onSelect={selectNode}
+            onSelect={(nodeId) => selectNode(nodeId)}
           />
         ))}
       </Canvas>

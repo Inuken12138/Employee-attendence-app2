@@ -16,7 +16,7 @@ export default async function KitchenDesignerProjectPage({
           <div className="pill">Project workspace</div>
           <h1 className="section-title" style={{ marginTop: '0.9rem' }}>Kitchen project {projectId}</h1>
           <p className="muted" style={{ marginTop: '0.4rem' }}>
-            Prototype editor shell backed by published planner catalog products.
+            Room-definition MVP with staged 2D-to-3D flow and a persistent planner shell.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>

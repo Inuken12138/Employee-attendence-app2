@@ -69,8 +69,8 @@ export default function CategoryPage() {
         const childrenData = await childrenRes.json();
         setChildren(childrenData);
 
-        // Fetch products - for level 3+ include descendants
-        const includeDescendants = cat.level >= 3;
+        // Show descendant products on parent categories so nested items stay discoverable.
+        const includeDescendants = childrenData.length > 0;
         const productsUrl = `http://localhost:8000/api/products/?category_slug=${slug}&include_descendants=${includeDescendants}`;
         const productsRes = await fetch(productsUrl);
         const productsData = await productsRes.json();
@@ -92,8 +92,8 @@ export default function CategoryPage() {
     return <div style={{ padding: '2rem' }}>Category not found</div>;
   }
 
-  const isLevel2 = category.level === 2;
   const hasChildren = children.length > 0;
+  const showOverviewBlocks = category.level === 2 && hasChildren;
 
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem 3vw' }}>
@@ -190,7 +190,7 @@ export default function CategoryPage() {
       )}
 
       {/* Main Body */}
-      {isLevel2 ? (
+      {showOverviewBlocks ? (
         // Level 2: CTA blocks
         <div style={{
           display: 'grid',

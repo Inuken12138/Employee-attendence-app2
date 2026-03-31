@@ -1,8 +1,12 @@
 'use client';
-import { useMemo, useState } from 'react';
+
+import { memo, startTransition, useCallback, useMemo, useState } from 'react';
+
 import useErrorPopup from '../../../hooks/useErrorPopup';
 
 type ShiftStatus = 'present' | 'absent' | 'missing';
+type ShiftKey = 'morning' | 'afternoon';
+type ShiftTone = 'locked' | 'missing' | 'resolved';
 
 interface ShiftPayload {
   in: string;
@@ -14,7 +18,7 @@ interface DayRecord {
   rawLogs: string[];
   morning: ShiftPayload;
   afternoon: ShiftPayload;
-  mode: 'normal' | 'abnormal';
+  editable: boolean;
 }
 
 interface AttendanceEmployee {
@@ -28,7 +32,10 @@ interface AttendanceEmployee {
 interface ResolvePopupState {
   employeeIndex: number;
   day: number;
-  step: 'morning' | 'afternoon';
+  step: ShiftKey;
+  draftIn: string;
+  draftOut: string;
+  draftStatus: ShiftStatus;
 }
 
 interface ParsedEmployeePayload {
@@ -80,7 +87,47 @@ interface SaveDayPayload {
   afternoon: ShiftPayload;
 }
 
+interface AttendanceMeta {
+  year: number;
+  month: number;
+  daysInMonth: number;
+  status: string;
+}
+
+interface TimePickerFieldProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+interface AttendanceShiftCardProps {
+  title: string;
+  shift: ShiftPayload;
+  tone: ShiftTone;
+  canEdit: boolean;
+  onOpen: () => void;
+}
+
+interface AttendanceDayCellProps {
+  dayRecord: DayRecord;
+  employeeIndex: number;
+  day: number;
+  editMode: boolean;
+  onOpenResolvePopup: (employeeIndex: number, day: number, step: ShiftKey) => void;
+}
+
+interface AttendanceEmployeeRowProps {
+  employee: AttendanceEmployee;
+  employeeIndex: number;
+  dayNumbers: number[];
+  editMode: boolean;
+  onOpenResolvePopup: (employeeIndex: number, day: number, step: ShiftKey) => void;
+}
+
 const API_BASE = 'http://localhost:8000/api/payroll/attendance-records';
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'));
+const MINUTE_PRESETS = ['00', '05', '10', '15', '30', '45'];
 
 const emptyShift = (): ShiftPayload => ({ in: '', out: '', status: 'missing' });
 
@@ -94,13 +141,88 @@ const getErrorMessage = (data: unknown): string | undefined => {
   return undefined;
 };
 
+const normalizeTimeValue = (value: string): string => {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{1,2})$/);
+  if (!match) {
+    return '';
+  }
+
+  const hour = Number.parseInt(match[1], 10);
+  const minute = Number.parseInt(match[2], 10);
+  if (Number.isNaN(hour) || Number.isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return '';
+  }
+
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
+const splitTimeValue = (value: string) => {
+  const normalizedValue = normalizeTimeValue(value) || '00:00';
+  const [hour, minute] = normalizedValue.split(':');
+  return { hour, minute };
+};
+
+const formatTimePreview = (value: string) => {
+  const normalizedValue = normalizeTimeValue(value);
+  if (!normalizedValue) {
+    return '--:--';
+  }
+
+  const [hourText, minuteText] = normalizedValue.split(':');
+  const hour = Number.parseInt(hourText, 10);
+  const meridiem = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+
+  return `${hour12}:${minuteText} ${meridiem}`;
+};
+
+const adjustTimeByMinutes = (value: string, delta: number) => {
+  const normalizedValue = normalizeTimeValue(value) || '00:00';
+  const [hourText, minuteText] = normalizedValue.split(':');
+  const baseMinutes = Number.parseInt(hourText, 10) * 60 + Number.parseInt(minuteText, 10);
+  const adjustedMinutes = (baseMinutes + delta + 1440) % 1440;
+  const nextHour = Math.floor(adjustedMinutes / 60);
+  const nextMinute = adjustedMinutes % 60;
+  return `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`;
+};
+
+const getSuggestedTime = (step: ShiftKey, field: 'in' | 'out') => {
+  if (step === 'morning') {
+    return field === 'in' ? '08:00' : '12:00';
+  }
+  return field === 'in' ? '13:00' : '17:00';
+};
+
+const getShiftLabel = (shift: ShiftPayload) => {
+  if (shift.status === 'absent') {
+    return 'Marked absent';
+  }
+
+  const checkIn = normalizeTimeValue(shift.in);
+  const checkOut = normalizeTimeValue(shift.out);
+  if (!checkIn || !checkOut) {
+    return 'No logs';
+  }
+
+  return `${checkIn} - ${checkOut}`;
+};
+
+const getShiftTone = (dayRecord: DayRecord, shiftKey: ShiftKey): ShiftTone => {
+  if (!dayRecord.editable) {
+    return 'locked';
+  }
+
+  const shift = dayRecord[shiftKey];
+  return shift.status === 'missing' ? 'missing' : 'resolved';
+};
+
 const buildDayRecordFromLogs = (logs: string[]): DayRecord => {
   if (logs.length === 4) {
     return {
       rawLogs: logs,
       morning: { in: logs[0], out: logs[1], status: 'present' },
       afternoon: { in: logs[2], out: logs[3], status: 'present' },
-      mode: 'normal',
+      editable: false,
     };
   }
 
@@ -108,7 +230,7 @@ const buildDayRecordFromLogs = (logs: string[]): DayRecord => {
     rawLogs: logs,
     morning: emptyShift(),
     afternoon: emptyShift(),
-    mode: 'abnormal',
+    editable: true,
   };
 };
 
@@ -116,33 +238,212 @@ const buildDayRecordFromSaved = (dayPayload?: SavedDayPayload): DayRecord => {
   const rawLogs = Array.isArray(dayPayload?.raw_logs) ? dayPayload?.raw_logs || [] : [];
   const morning = dayPayload?.morning || {};
   const afternoon = dayPayload?.afternoon || {};
-  const morningPayload: ShiftPayload = {
-    in: String(morning.in || ''),
-    out: String(morning.out || ''),
-    status: (morning.status as ShiftStatus) || 'missing',
-  };
-  const afternoonPayload: ShiftPayload = {
-    in: String(afternoon.in || ''),
-    out: String(afternoon.out || ''),
-    status: (afternoon.status as ShiftStatus) || 'missing',
-  };
-
-  const isResolved = morningPayload.status !== 'missing' && afternoonPayload.status !== 'missing';
-  const mode: 'normal' | 'abnormal' = isResolved ? 'normal' : rawLogs.length === 4 ? 'normal' : 'abnormal';
 
   return {
     rawLogs,
-    morning: morningPayload,
-    afternoon: afternoonPayload,
-    mode,
+    morning: {
+      in: normalizeTimeValue(String(morning.in || '')),
+      out: normalizeTimeValue(String(morning.out || '')),
+      status: (morning.status as ShiftStatus) || 'missing',
+    },
+    afternoon: {
+      in: normalizeTimeValue(String(afternoon.in || '')),
+      out: normalizeTimeValue(String(afternoon.out || '')),
+      status: (afternoon.status as ShiftStatus) || 'missing',
+    },
+    editable: rawLogs.length !== 4,
   };
 };
+
+const mapParsedEmployees = (data: ParsedAttendanceResponse): AttendanceEmployee[] => {
+  const parsedDayNumbers = Array.from({ length: data.days_in_month || 31 }, (_, index) => index + 1);
+
+  return (data.employees || []).map((employee) => {
+    const dayLogs = employee.day_logs || {};
+    const days: Record<string, DayRecord> = {};
+
+    parsedDayNumbers.forEach((day) => {
+      const logs = Array.isArray(dayLogs[String(day)]) ? dayLogs[String(day)] : [];
+      days[String(day)] = buildDayRecordFromLogs(logs);
+    });
+
+    return {
+      workerId: employee.worker_id || employee.employee_id || null,
+      employeeName: employee.employee_name || null,
+      department: employee.department || null,
+      days,
+    };
+  });
+};
+
+const mapSavedEmployees = (data: SavedAttendanceResponse): AttendanceEmployee[] => {
+  const savedDayNumbers = Array.from({ length: data.days_in_month || 31 }, (_, index) => index + 1);
+
+  return (data.employees || []).map((employee) => {
+    const dayMap = employee.days || {};
+    const days: Record<string, DayRecord> = {};
+
+    savedDayNumbers.forEach((day) => {
+      days[String(day)] = buildDayRecordFromSaved(dayMap[String(day)]);
+    });
+
+    return {
+      employeeDbId: employee.employee_db_id || null,
+      workerId: employee.worker_id || null,
+      employeeName: employee.employee_name || null,
+      department: employee.department || null,
+      days,
+    };
+  });
+};
+
+function TimePickerField({ label, value, onChange }: TimePickerFieldProps) {
+  const { hour, minute } = splitTimeValue(value);
+
+  return (
+    <div className="payroll-time-card">
+      <div className="payroll-time-card-header">
+        <div>
+          <div className="payroll-time-label">{label}</div>
+          <div className="payroll-time-help">Precise to the minute.</div>
+        </div>
+        <div className="payroll-time-preview">{formatTimePreview(value)}</div>
+      </div>
+
+      <div className="payroll-time-selects">
+        <label className="payroll-time-select">
+          <span>Hour</span>
+          <select
+            className="select"
+            value={hour}
+            onChange={(event) => onChange(`${event.target.value}:${minute}`)}
+          >
+            {HOUR_OPTIONS.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="payroll-time-select">
+          <span>Minute</span>
+          <select
+            className="select"
+            value={minute}
+            onChange={(event) => onChange(`${hour}:${event.target.value}`)}
+          >
+            {MINUTE_OPTIONS.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="payroll-time-quick-actions">
+        <button type="button" className="payroll-time-chip" onClick={() => onChange(adjustTimeByMinutes(value, -5))}>-5m</button>
+        <button type="button" className="payroll-time-chip" onClick={() => onChange(adjustTimeByMinutes(value, -1))}>-1m</button>
+        <button type="button" className="payroll-time-chip" onClick={() => onChange(adjustTimeByMinutes(value, 1))}>+1m</button>
+        <button type="button" className="payroll-time-chip" onClick={() => onChange(adjustTimeByMinutes(value, 5))}>+5m</button>
+        {MINUTE_PRESETS.map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            className="payroll-time-chip payroll-time-chip-muted"
+            onClick={() => onChange(`${hour}:${preset}`)}
+          >
+            :{preset}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const AttendanceShiftCard = memo(function AttendanceShiftCard({
+  title,
+  shift,
+  tone,
+  canEdit,
+  onOpen,
+}: AttendanceShiftCardProps) {
+  return (
+    <button
+      type="button"
+      className={`payroll-shift-card payroll-shift-card-${tone}${canEdit ? ' payroll-shift-card-clickable' : ''}`}
+      onClick={onOpen}
+      disabled={!canEdit}
+    >
+      <div className="payroll-shift-title">{title}</div>
+      <div className="payroll-shift-value">{getShiftLabel(shift)}</div>
+    </button>
+  );
+});
+
+const AttendanceDayCell = memo(function AttendanceDayCell({
+  dayRecord,
+  employeeIndex,
+  day,
+  editMode,
+  onOpenResolvePopup,
+}: AttendanceDayCellProps) {
+  const canEdit = editMode && dayRecord.editable;
+  const morningTone = getShiftTone(dayRecord, 'morning');
+  const afternoonTone = getShiftTone(dayRecord, 'afternoon');
+
+  return (
+    <div className={`payroll-day-cell${dayRecord.editable ? ' payroll-day-cell-editable' : ''}`}>
+      <AttendanceShiftCard
+        title="Morning"
+        shift={dayRecord.morning}
+        tone={morningTone}
+        canEdit={canEdit}
+        onOpen={() => onOpenResolvePopup(employeeIndex, day, 'morning')}
+      />
+      <AttendanceShiftCard
+        title="Afternoon"
+        shift={dayRecord.afternoon}
+        tone={afternoonTone}
+        canEdit={canEdit}
+        onOpen={() => onOpenResolvePopup(employeeIndex, day, 'afternoon')}
+      />
+      {dayRecord.rawLogs.length > 0 && (
+        <div className="payroll-raw-logs">Sheet logs: {dayRecord.rawLogs.join(' · ')}</div>
+      )}
+    </div>
+  );
+});
+
+const AttendanceEmployeeRow = memo(function AttendanceEmployeeRow({
+  employee,
+  employeeIndex,
+  dayNumbers,
+  editMode,
+  onOpenResolvePopup,
+}: AttendanceEmployeeRowProps) {
+  return (
+    <tr className="payroll-table-row">
+      <td>{employee.workerId || '-'}</td>
+      <td>{employee.employeeName || '-'}</td>
+      <td>{employee.department || '-'}</td>
+      {dayNumbers.map((day) => (
+        <td key={`${employeeIndex}-${day}`} className="payroll-table-cell">
+          <AttendanceDayCell
+            dayRecord={employee.days[String(day)]}
+            employeeIndex={employeeIndex}
+            day={day}
+            editMode={editMode}
+            onOpenResolvePopup={onOpenResolvePopup}
+          />
+        </td>
+      ))}
+    </tr>
+  );
+});
 
 export default function EmployeePayrollPage() {
   const [attendanceFile, setAttendanceFile] = useState<File | null>(null);
   const [uploadMonth, setUploadMonth] = useState(new Date().getMonth() + 1);
   const [uploadYear, setUploadYear] = useState(new Date().getFullYear());
-  const [attendanceMeta, setAttendanceMeta] = useState<{ year: number; month: number; daysInMonth: number; status: string } | null>(null);
+  const [attendanceMeta, setAttendanceMeta] = useState<AttendanceMeta | null>(null);
   const [employees, setEmployees] = useState<AttendanceEmployee[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
@@ -159,10 +460,22 @@ export default function EmployeePayrollPage() {
   const hasUnresolved = useMemo(() => {
     return employees.some((employee) =>
       Object.values(employee.days).some((day) =>
-        day.mode === 'abnormal' || day.morning.status === 'missing' || day.afternoon.status === 'missing'
+        day.morning.status === 'missing' || day.afternoon.status === 'missing'
       )
     );
   }, [employees]);
+
+  const activePopupDayRecord = activePopup
+    ? employees[activePopup.employeeIndex]?.days[String(activePopup.day)] || null
+    : null;
+  const activePopupEmployee = activePopup ? employees[activePopup.employeeIndex] || null : null;
+
+  const applyAttendanceState = useCallback((meta: AttendanceMeta, nextEmployees: AttendanceEmployee[]) => {
+    startTransition(() => {
+      setAttendanceMeta(meta);
+      setEmployees(nextEmployees);
+    });
+  }, []);
 
   const uploadAttendance = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,30 +502,16 @@ export default function EmployeePayrollPage() {
         return;
       }
 
-      const parsedDayNumbers = Array.from({ length: data.days_in_month || 31 }, (_, index) => index + 1);
-      const parsedEmployees: AttendanceEmployee[] = (data.employees || []).map((employee) => {
-        const dayLogs = employee.day_logs || {};
-        const days: Record<string, DayRecord> = {};
-        parsedDayNumbers.forEach((day) => {
-          const logs = Array.isArray(dayLogs[String(day)]) ? dayLogs[String(day)] : [];
-          days[String(day)] = buildDayRecordFromLogs(logs);
-        });
-
-        return {
-          workerId: employee.worker_id || employee.employee_id || null,
-          employeeName: employee.employee_name || null,
-          department: employee.department || null,
-          days,
-        };
-      });
-
-      setAttendanceMeta({
-        year: data.year,
-        month: data.month,
-        daysInMonth: data.days_in_month,
-        status: 'parsed',
-      });
-      setEmployees(parsedEmployees);
+      applyAttendanceState(
+        {
+          year: data.year,
+          month: data.month,
+          daysInMonth: data.days_in_month,
+          status: 'parsed',
+        },
+        mapParsedEmployees(data),
+      );
+      setActivePopup(null);
     } catch {
       showErrorPopup('Failed to upload attendance sheet.');
     } finally {
@@ -227,7 +526,7 @@ export default function EmployeePayrollPage() {
     try {
       setter(true);
       const response = await fetch(
-        `${API_BASE}${isDraft ? '/drafts/' : '/'}?year=${uploadYear}&month=${uploadMonth}`
+        `${API_BASE}${isDraft ? '/drafts/' : '/'}?year=${uploadYear}&month=${uploadMonth}`,
       );
       const data = (await response.json()) as SavedAttendanceResponse;
       if (!response.ok) {
@@ -235,32 +534,16 @@ export default function EmployeePayrollPage() {
         return;
       }
 
-      const loadedDayNumbers = Array.from({ length: data.days_in_month || 31 }, (_, index) => index + 1);
-      const mappedEmployees: AttendanceEmployee[] = (data.employees || []).map((employee) => {
-        const days: Record<string, DayRecord> = {};
-        const dayMap = employee.days || {};
-
-        loadedDayNumbers.forEach((day) => {
-          const dayPayload = dayMap[String(day)] || {};
-          days[String(day)] = buildDayRecordFromSaved(dayPayload);
-        });
-
-        return {
-          employeeDbId: employee.employee_db_id || null,
-          workerId: employee.worker_id || null,
-          employeeName: employee.employee_name || null,
-          department: employee.department || null,
-          days,
-        };
-      });
-
-      setAttendanceMeta({
-        year: data.year,
-        month: data.month,
-        daysInMonth: data.days_in_month,
-        status: data.status || mode,
-      });
-      setEmployees(mappedEmployees);
+      applyAttendanceState(
+        {
+          year: data.year,
+          month: data.month,
+          daysInMonth: data.days_in_month,
+          status: data.status || mode,
+        },
+        mapSavedEmployees(data),
+      );
+      setActivePopup(null);
     } catch {
       showErrorPopup('Failed to load attendance records.');
     } finally {
@@ -268,7 +551,7 @@ export default function EmployeePayrollPage() {
     }
   };
 
-  const buildSavePayload = () => {
+  const buildSavePayload = useCallback(() => {
     if (!attendanceMeta) {
       return null;
     }
@@ -278,6 +561,7 @@ export default function EmployeePayrollPage() {
       month: attendanceMeta.month,
       employees: employees.map((employee) => {
         const daysPayload: Record<string, SaveDayPayload> = {};
+
         Object.entries(employee.days).forEach(([day, dayRecord]) => {
           daysPayload[day] = {
             raw_logs: dayRecord.rawLogs,
@@ -294,7 +578,7 @@ export default function EmployeePayrollPage() {
         };
       }),
     };
-  };
+  }, [attendanceMeta, employees]);
 
   const saveRecords = async (mode: 'final' | 'draft') => {
     if (!attendanceMeta) {
@@ -326,31 +610,16 @@ export default function EmployeePayrollPage() {
         return;
       }
 
-      setAttendanceMeta({
-        year: data.year,
-        month: data.month,
-        daysInMonth: data.days_in_month,
-        status: data.status || mode,
-      });
-      const savedDayNumbers = Array.from({ length: data.days_in_month || 31 }, (_, index) => index + 1);
-      setEmployees(
-        (data.employees || []).map((employee) => {
-          const days: Record<string, DayRecord> = {};
-          const dayMap = employee.days || {};
-          savedDayNumbers.forEach((day) => {
-            const dayPayload = dayMap[String(day)];
-            days[String(day)] = buildDayRecordFromSaved(dayPayload);
-          });
-
-          return {
-            employeeDbId: employee.employee_db_id || null,
-            workerId: employee.worker_id || null,
-            employeeName: employee.employee_name || null,
-            department: employee.department || null,
-            days,
-          };
-        })
+      applyAttendanceState(
+        {
+          year: data.year,
+          month: data.month,
+          daysInMonth: data.days_in_month,
+          status: data.status || mode,
+        },
+        mapSavedEmployees(data),
       );
+      setActivePopup(null);
     } catch {
       showErrorPopup('Failed to save attendance records.');
     } finally {
@@ -370,85 +639,82 @@ export default function EmployeePayrollPage() {
     }
   };
 
-  const openResolvePopup = (employeeIndex: number, day: number, step?: 'morning' | 'afternoon') => {
-    const dayRecord = employees[employeeIndex].days[String(day)];
-    const nextStep = step || (dayRecord.morning.status === 'missing' ? 'morning' : 'afternoon');
-    setActivePopup({ employeeIndex, day, step: nextStep });
-  };
+  const openResolvePopup = useCallback((employeeIndex: number, day: number, step: ShiftKey) => {
+    const shift = employees[employeeIndex]?.days[String(day)]?.[step];
+    if (!shift) {
+      return;
+    }
 
-  const updateDayRecord = (employeeIndex: number, day: number, updater: (record: DayRecord) => DayRecord) => {
-    setEmployees((prev) => {
-      const next = [...prev];
-      const employee = { ...next[employeeIndex] };
-      const dayKey = String(day);
-      employee.days = { ...employee.days, [dayKey]: updater(employee.days[dayKey]) };
-      next[employeeIndex] = employee;
-      return next;
+    setActivePopup({
+      employeeIndex,
+      day,
+      step,
+      draftIn: normalizeTimeValue(shift.in) || getSuggestedTime(step, 'in'),
+      draftOut: normalizeTimeValue(shift.out) || getSuggestedTime(step, 'out'),
+      draftStatus: shift.status,
     });
-  };
+  }, [employees]);
 
-  const saveResolution = (type: 'manual' | 'absent') => {
+  const updatePopupTime = useCallback((field: 'in' | 'out', value: string) => {
+    setActivePopup((previous) => {
+      if (!previous) {
+        return previous;
+      }
+
+      if (field === 'in') {
+        return { ...previous, draftIn: normalizeTimeValue(value) };
+      }
+
+      return { ...previous, draftOut: normalizeTimeValue(value) };
+    });
+  }, []);
+
+  const saveResolution = useCallback((type: 'manual' | 'absent') => {
     if (!activePopup) {
       return;
     }
 
-    const { employeeIndex, day, step } = activePopup;
-    updateDayRecord(employeeIndex, day, (record) => {
-      const updated: DayRecord = {
-        ...record,
-        morning: { ...record.morning },
-        afternoon: { ...record.afternoon },
-      };
+    const { employeeIndex, day, step, draftIn, draftOut } = activePopup;
+    if (type === 'manual' && (!normalizeTimeValue(draftIn) || !normalizeTimeValue(draftOut))) {
+      showErrorPopup('Choose both check-in and check-out times before saving the shift.');
+      return;
+    }
 
-      const target = step === 'morning' ? updated.morning : updated.afternoon;
-      if (type === 'absent') {
-        target.status = 'absent';
-        target.in = '';
-        target.out = '';
-      } else {
-        target.status = 'present';
-      }
+    startTransition(() => {
+      setEmployees((previous) => {
+        const nextEmployees = [...previous];
+        const employee = { ...nextEmployees[employeeIndex] };
+        const dayKey = String(day);
+        const dayRecord = employee.days[dayKey];
+        const updatedDayRecord: DayRecord = {
+          ...dayRecord,
+          morning: { ...dayRecord.morning },
+          afternoon: { ...dayRecord.afternoon },
+        };
 
-      if (updated.mode === 'abnormal') {
-        const bothResolved = updated.morning.status !== 'missing' && updated.afternoon.status !== 'missing';
-        if (bothResolved) {
-          updated.mode = 'normal';
+        const target = step === 'morning' ? updatedDayRecord.morning : updatedDayRecord.afternoon;
+        if (type === 'absent') {
+          target.status = 'absent';
+          target.in = '';
+          target.out = '';
+        } else {
+          target.status = 'present';
+          target.in = normalizeTimeValue(draftIn);
+          target.out = normalizeTimeValue(draftOut);
         }
-      }
 
-      return updated;
+        employee.days = {
+          ...employee.days,
+          [dayKey]: updatedDayRecord,
+        };
+        nextEmployees[employeeIndex] = employee;
+
+        return nextEmployees;
+      });
     });
 
     setActivePopup(null);
-  };
-
-  const updatePopupTime = (field: 'in' | 'out', value: string) => {
-    if (!activePopup) {
-      return;
-    }
-
-    const { employeeIndex, day, step } = activePopup;
-    updateDayRecord(employeeIndex, day, (record) => {
-      const updated: DayRecord = {
-        ...record,
-        morning: { ...record.morning },
-        afternoon: { ...record.afternoon },
-      };
-      const target = step === 'morning' ? updated.morning : updated.afternoon;
-      target[field] = value;
-      return updated;
-    });
-  };
-
-  const renderShiftLabel = (shift: ShiftPayload) => {
-    if (shift.status === 'absent') {
-      return 'Absent';
-    }
-    if (!shift.in && !shift.out) {
-      return '--';
-    }
-    return `${shift.in} - ${shift.out}`;
-  };
+  }, [activePopup, showErrorPopup]);
 
   return (
     <div>
@@ -562,6 +828,9 @@ export default function EmployeePayrollPage() {
               <p className="muted" style={{ marginTop: '0.6rem' }}>
                 Active month: {attendanceMeta.year}-{String(attendanceMeta.month).padStart(2, '0')}
               </p>
+              <p className="muted" style={{ marginTop: '0.4rem' }}>
+                Active workers shown: {employees.length}
+              </p>
               {hasUnresolved ? (
                 <p style={{ color: '#d97962', marginTop: '0.4rem' }}>
                   Unresolved shifts remain.
@@ -577,18 +846,18 @@ export default function EmployeePayrollPage() {
       </div>
 
       <div className="card card-glass" style={{ marginTop: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem' }}>
           <h2 className="section-title">Attendance Records</h2>
           <span className="pill">Draft + Final</span>
         </div>
         {employees.length === 0 ? (
-          <p className="muted">No attendance records yet. Upload or load a month to start resolving.</p>
+          <p className="muted">No active employee attendance records yet. Upload or load a month to start resolving.</p>
         ) : (
-          <div className="overflow-x-auto" style={{ marginTop: '1rem' }}>
-            <table className="table" style={{ minWidth: '1200px' }}>
+          <div className="overflow-x-auto payroll-table-shell" style={{ marginTop: '1rem' }}>
+            <table className="table payroll-records-table" style={{ minWidth: '1200px' }}>
               <thead>
                 <tr>
-                  <th>Employee ID</th>
+                  <th>Worker ID</th>
                   <th>Name</th>
                   <th>Department</th>
                   {dayNumbers.map((day) => (
@@ -598,101 +867,14 @@ export default function EmployeePayrollPage() {
               </thead>
               <tbody>
                 {employees.map((employee, employeeIndex) => (
-                  <tr key={`${employee.workerId || employee.employeeName}-${employeeIndex}`}>
-                    <td>{employee.workerId || '-'}</td>
-                    <td>{employee.employeeName || '-'}</td>
-                    <td>{employee.department || '-'}</td>
-                    {dayNumbers.map((day) => {
-                      const dayRecord = employee.days[String(day)];
-                      const showAbnormal = dayRecord.mode === 'abnormal';
-                      const morningMissing = dayRecord.morning.status === 'missing';
-                      const afternoonMissing = dayRecord.afternoon.status === 'missing';
-                      const cellClickable = editMode && (showAbnormal || morningMissing || afternoonMissing);
-
-                      return (
-                        <td key={`${employeeIndex}-${day}`}>
-                          {showAbnormal ? (
-                            <div
-                              role="button"
-                              tabIndex={0}
-                              onClick={() => {
-                                if (cellClickable) {
-                                  openResolvePopup(employeeIndex, day);
-                                }
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' && cellClickable) {
-                                  openResolvePopup(employeeIndex, day);
-                                }
-                              }}
-                              style={{
-                                background: '#c75757',
-                                color: '#fff7f3',
-                                padding: '0.6rem',
-                                borderRadius: '12px',
-                                minHeight: '72px',
-                                cursor: cellClickable ? 'pointer' : 'default',
-                                whiteSpace: 'pre-line',
-                              }}
-                            >
-                              {dayRecord.rawLogs.length > 0 ? dayRecord.rawLogs.join('\n') : 'No logs'}
-                            </div>
-                          ) : (
-                            <div style={{ display: 'grid', gap: '0.4rem' }}>
-                              <div
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => {
-                                  if (editMode && morningMissing) {
-                                    openResolvePopup(employeeIndex, day, 'morning');
-                                  }
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter' && editMode && morningMissing) {
-                                    openResolvePopup(employeeIndex, day, 'morning');
-                                  }
-                                }}
-                                style={{
-                                  background: morningMissing ? '#c75757' : 'rgba(255, 255, 255, 0.08)',
-                                  color: morningMissing ? '#fff7f3' : 'inherit',
-                                  padding: '0.4rem',
-                                  borderRadius: '10px',
-                                  cursor: editMode && morningMissing ? 'pointer' : 'default',
-                                }}
-                              >
-                                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', opacity: 0.7 }}>Morning</div>
-                                <div style={{ fontWeight: 600 }}>{renderShiftLabel(dayRecord.morning)}</div>
-                              </div>
-                              <div
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => {
-                                  if (editMode && afternoonMissing) {
-                                    openResolvePopup(employeeIndex, day, 'afternoon');
-                                  }
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter' && editMode && afternoonMissing) {
-                                    openResolvePopup(employeeIndex, day, 'afternoon');
-                                  }
-                                }}
-                                style={{
-                                  background: afternoonMissing ? '#c75757' : 'rgba(255, 255, 255, 0.08)',
-                                  color: afternoonMissing ? '#fff7f3' : 'inherit',
-                                  padding: '0.4rem',
-                                  borderRadius: '10px',
-                                  cursor: editMode && afternoonMissing ? 'pointer' : 'default',
-                                }}
-                              >
-                                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', opacity: 0.7 }}>Afternoon</div>
-                                <div style={{ fontWeight: 600 }}>{renderShiftLabel(dayRecord.afternoon)}</div>
-                              </div>
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
+                  <AttendanceEmployeeRow
+                    key={`${employee.workerId || employee.employeeName || 'employee'}-${employeeIndex}`}
+                    employee={employee}
+                    employeeIndex={employeeIndex}
+                    dayNumbers={dayNumbers}
+                    editMode={editMode}
+                    onOpenResolvePopup={openResolvePopup}
+                  />
                 ))}
               </tbody>
             </table>
@@ -700,53 +882,40 @@ export default function EmployeePayrollPage() {
         )}
       </div>
 
-      {activePopup && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(6, 8, 17, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 50,
-            padding: '1.5rem',
-          }}
-        >
-          <div className="card" style={{ width: 'min(520px, 92vw)' }}>
-            <h3 className="section-title">Resolve Attendance</h3>
-            <p className="muted" style={{ marginTop: '0.4rem' }}>
-              Day {activePopup.day} · {activePopup.step === 'morning' ? 'Morning shift' : 'Afternoon shift'}
-            </p>
-            <div className="form-grid" style={{ marginTop: '1.2rem' }}>
-              <div className="form-field">
-                <label>Check-in</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={
-                    activePopup.step === 'morning'
-                      ? employees[activePopup.employeeIndex].days[String(activePopup.day)].morning.in
-                      : employees[activePopup.employeeIndex].days[String(activePopup.day)].afternoon.in
-                  }
-                  onChange={(e) => updatePopupTime('in', e.target.value)}
-                />
+      {activePopup && activePopupDayRecord && activePopupEmployee && (
+        <div className="payroll-modal-backdrop">
+          <div className="card payroll-modal-card">
+            <div className="payroll-modal-header">
+              <div>
+                <h3 className="section-title" style={{ marginBottom: 0 }}>Resolve Attendance</h3>
+                <p className="muted" style={{ marginTop: '0.4rem' }}>
+                  {activePopupEmployee.employeeName || activePopupEmployee.workerId || 'Employee'} · Day {activePopup.day} · {activePopup.step === 'morning' ? 'Morning shift' : 'Afternoon shift'}
+                </p>
               </div>
-              <div className="form-field">
-                <label>Check-out</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={
-                    activePopup.step === 'morning'
-                      ? employees[activePopup.employeeIndex].days[String(activePopup.day)].morning.out
-                      : employees[activePopup.employeeIndex].days[String(activePopup.day)].afternoon.out
-                  }
-                  onChange={(e) => updatePopupTime('out', e.target.value)}
-                />
-              </div>
+              <div className="pill">{activePopup.draftStatus === 'missing' ? 'Needs review' : 'Re-edit allowed'}</div>
             </div>
-            <div className="form-grid" style={{ marginTop: '1.2rem' }}>
+
+            {activePopupDayRecord.rawLogs.length > 0 && (
+              <div className="payroll-raw-log-panel">
+                <div className="payroll-time-label">Sheet logs</div>
+                <div className="payroll-raw-log-copy">{activePopupDayRecord.rawLogs.join(' · ')}</div>
+              </div>
+            )}
+
+            <div className="payroll-time-grid">
+              <TimePickerField
+                label="Check-in"
+                value={activePopup.draftIn}
+                onChange={(value) => updatePopupTime('in', value)}
+              />
+              <TimePickerField
+                label="Check-out"
+                value={activePopup.draftOut}
+                onChange={(value) => updatePopupTime('out', value)}
+              />
+            </div>
+
+            <div className="payroll-modal-actions">
               <button
                 type="button"
                 className="btn btn-outline"
@@ -762,10 +931,11 @@ export default function EmployeePayrollPage() {
                 Save Shift
               </button>
             </div>
+
             <button
               type="button"
               className="btn btn-ghost"
-              style={{ marginTop: '1rem' }}
+              style={{ justifySelf: 'start' }}
               onClick={() => setActivePopup(null)}
             >
               Cancel

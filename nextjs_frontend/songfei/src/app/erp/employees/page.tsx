@@ -4,7 +4,7 @@ export default function EmployeesPage() {
       <div className="kicker">People Ops</div>
       <h1 className="hero-title" style={{ fontSize: 'clamp(2rem, 4vw, 3rem)' }}>Employee control center</h1>
       <p className="hero-copy">
-        Manage employee records, update compensation data, and process monthly payroll in one flow.
+        Manage worker records, maintain attendance matching IDs, and resolve monthly attendance inside one ERP flow.
       </p>
       <div className="grid-2" style={{ marginTop: '2rem' }}>
         <a href="/erp/employees/crud" className="card card-glass" style={{ display: 'grid', gap: '0.8rem' }}>
@@ -15,8 +15,8 @@ export default function EmployeesPage() {
         </a>
         <a href="/erp/employees/payroll" className="card" style={{ display: 'grid', gap: '0.8rem' }}>
           <span className="pill">Payroll</span>
-          <h2 className="section-title">Monthly Salary Calculation</h2>
-          <p className="muted">Upload attendance sheets and finalize payroll outputs.</p>
+          <h2 className="section-title">Attendance Resolution</h2>
+          <p className="muted">Upload attendance sheets, resolve missing shifts, and save monthly attendance records.</p>
           <span className="btn btn-primary" style={{ justifySelf: 'start' }}>Run Payroll</span>
         </a>
       </div>

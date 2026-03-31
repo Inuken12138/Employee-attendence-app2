@@ -30,6 +30,9 @@ class PlannerProductProfileTests(APITestCase):
             {
                 'is_enabled': True,
                 'planner_role': 'base',
+                'planner_root_category': 'cabinets',
+                'planner_group_category': 'base_cabinets',
+                'planner_leaf_category': 'with_door',
                 'width_mm': 600,
                 'depth_mm': 580,
                 'height_mm': 720,
@@ -40,6 +43,7 @@ class PlannerProductProfileTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data['is_enabled'])
         self.assertEqual(response.data['planner_role'], 'base')
+        self.assertEqual(response.data['planner_leaf_category'], 'with_door')
         self.assertEqual(response.data['width_mm'], 600)
 
     def test_asset_validation_fails_without_glb(self):
@@ -54,6 +58,9 @@ class PlannerProductProfileTests(APITestCase):
             product=self.product,
             is_enabled=True,
             planner_role='base',
+            planner_root_category='cabinets',
+            planner_group_category='base_cabinets',
+            planner_leaf_category='with_door',
             width_mm=600,
             depth_mm=580,
             height_mm=720,
@@ -82,6 +89,9 @@ class PlannerProductProfileTests(APITestCase):
             is_enabled=True,
             catalog_state='published',
             planner_role='base',
+            planner_root_category='cabinets',
+            planner_group_category='base_cabinets',
+            planner_leaf_category='with_door',
             width_mm=600,
             depth_mm=580,
             height_mm=720,
@@ -93,6 +103,27 @@ class PlannerProductProfileTests(APITestCase):
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['id'], self.product.id)
         self.assertEqual(response.data[0]['planner_role'], 'base')
+        self.assertEqual(response.data[0]['planner_group_category'], 'base_cabinets')
+
+    def test_catalog_endpoint_filters_by_planner_path(self):
+        KitchenDesignerProductProfile.objects.create(
+            product=self.product,
+            is_enabled=True,
+            catalog_state='published',
+            planner_role='base',
+            planner_root_category='cabinets',
+            planner_group_category='base_cabinets',
+            planner_leaf_category='with_door',
+            width_mm=600,
+            depth_mm=580,
+            height_mm=720,
+        )
+
+        response = self.client.get('/api/planner/catalog/products/?root_category=cabinets&group_category=base_cabinets&leaf_category=with_door')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['product_id'], 'KIT-001')
 
 
 class PlannerProjectPersistenceTests(APITestCase):
@@ -180,6 +211,9 @@ class PlannerProjectPersistenceTests(APITestCase):
             is_enabled=True,
             catalog_state='published',
             planner_role='base',
+            planner_root_category='cabinets',
+            planner_group_category='base_cabinets',
+            planner_leaf_category='with_door',
             width_mm=600,
             depth_mm=580,
             height_mm=720,
@@ -227,6 +261,9 @@ class PlannerProjectPersistenceTests(APITestCase):
             is_enabled=True,
             catalog_state='published',
             planner_role='wall',
+            planner_root_category='cabinets',
+            planner_group_category='wall_cabinets',
+            planner_leaf_category='with_door',
             width_mm=600,
             depth_mm=350,
             height_mm=720,
@@ -275,6 +312,9 @@ class PlannerProjectPersistenceTests(APITestCase):
             is_enabled=True,
             catalog_state='published',
             planner_role='base',
+            planner_root_category='cabinets',
+            planner_group_category='base_cabinets',
+            planner_leaf_category='with_door',
             width_mm=600,
             depth_mm=580,
             height_mm=720,

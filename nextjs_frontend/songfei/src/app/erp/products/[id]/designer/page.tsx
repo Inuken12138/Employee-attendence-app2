@@ -5,6 +5,12 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import useErrorPopup from '@/app/hooks/useErrorPopup';
+import {
+  PLANNER_CABINET_GROUPS,
+  PLANNER_ROOT_CATEGORIES,
+  formatPlannerBreadcrumb,
+  type PlannerCabinetGroupKey,
+} from '@/features/kitchen-designer/lib/plannerTaxonomy';
 import { apiJson } from '@/lib/api';
 
 interface ProductionAsset {
@@ -39,6 +45,9 @@ interface DesignerProfile {
   is_enabled: boolean;
   catalog_state: 'draft' | 'staging' | 'published' | 'archived';
   planner_role: string;
+  planner_root_category: string;
+  planner_group_category: string;
+  planner_leaf_category: string;
   glb_file_url: string | null;
   width_mm: number | null;
   depth_mm: number | null;
@@ -65,6 +74,9 @@ interface DesignerProfile {
 interface DesignerFormState {
   is_enabled: boolean;
   planner_role: string;
+  planner_root_category: string;
+  planner_group_category: string;
+  planner_leaf_category: string;
   width_mm: string;
   depth_mm: string;
   height_mm: string;
@@ -87,6 +99,9 @@ interface DesignerFormState {
 const defaultForm: DesignerFormState = {
   is_enabled: false,
   planner_role: '',
+  planner_root_category: '',
+  planner_group_category: '',
+  planner_leaf_category: '',
   width_mm: '',
   depth_mm: '',
   height_mm: '',
@@ -144,6 +159,20 @@ export default function ProductDesignerSettingsPage() {
   });
   const [assetFile, setAssetFile] = useState<File | null>(null);
   const [assetSaving, setAssetSaving] = useState(false);
+  const plannerLeafOptions = useMemo(() => {
+    if (!form.planner_group_category) {
+      return [];
+    }
+
+    return Object.entries(
+      PLANNER_CABINET_GROUPS[form.planner_group_category as PlannerCabinetGroupKey]?.leaves ?? {},
+    );
+  }, [form.planner_group_category]);
+  const plannerBreadcrumb = formatPlannerBreadcrumb({
+    rootCategory: form.planner_root_category,
+    groupCategory: form.planner_group_category,
+    leafCategory: form.planner_leaf_category,
+  });
 
   const loadProfile = useCallback(async () => {
     if (!productId) {
@@ -157,6 +186,9 @@ export default function ProductDesignerSettingsPage() {
       setForm({
         is_enabled: data.is_enabled,
         planner_role: data.planner_role || '',
+        planner_root_category: data.planner_root_category || '',
+        planner_group_category: data.planner_group_category || '',
+        planner_leaf_category: data.planner_leaf_category || '',
         width_mm: data.width_mm?.toString() || '',
         depth_mm: data.depth_mm?.toString() || '',
         height_mm: data.height_mm?.toString() || '',
@@ -212,6 +244,9 @@ export default function ProductDesignerSettingsPage() {
       const formData = new FormData();
       formData.append('is_enabled', String(form.is_enabled));
       formData.append('planner_role', form.planner_role);
+      formData.append('planner_root_category', form.planner_root_category);
+      formData.append('planner_group_category', form.planner_group_category);
+      formData.append('planner_leaf_category', form.planner_leaf_category);
       formData.append('origin_anchor', form.origin_anchor);
       formData.append('default_rotation_deg', form.default_rotation_deg || '0');
       formData.append('requires_wall_attachment', String(form.requires_wall_attachment));
@@ -399,6 +434,62 @@ export default function ProductDesignerSettingsPage() {
             </select>
           </label>
           <label className="form-field">
+            <span>Planner root category</span>
+            <select
+              className="input"
+              value={form.planner_root_category}
+              onChange={(event) => {
+                const nextRootCategory = event.target.value;
+                setForm((current) => ({
+                  ...current,
+                  planner_root_category: nextRootCategory,
+                  planner_group_category: nextRootCategory === 'cabinets' ? current.planner_group_category : '',
+                  planner_leaf_category: nextRootCategory === 'cabinets' ? current.planner_leaf_category : '',
+                }));
+              }}
+            >
+              <option value="">Select root category</option>
+              {Object.entries(PLANNER_ROOT_CATEGORIES).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
+            <span>Planner group category</span>
+            <select
+              className="input"
+              value={form.planner_group_category}
+              disabled={form.planner_root_category !== 'cabinets'}
+              onChange={(event) => {
+                const nextGroupCategory = event.target.value;
+                setForm((current) => ({
+                  ...current,
+                  planner_group_category: nextGroupCategory,
+                  planner_leaf_category: '',
+                }));
+              }}
+            >
+              <option value="">Select group category</option>
+              {Object.entries(PLANNER_CABINET_GROUPS).map(([value, definition]) => (
+                <option key={value} value={value}>{definition.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
+            <span>Planner leaf category</span>
+            <select
+              className="input"
+              value={form.planner_leaf_category}
+              disabled={form.planner_root_category !== 'cabinets' || !form.planner_group_category}
+              onChange={(event) => updateForm('planner_leaf_category', event.target.value)}
+            >
+              <option value="">Select leaf category</option>
+              {plannerLeafOptions.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
             <span>Origin anchor</span>
             <select className="input" value={form.origin_anchor} onChange={(event) => updateForm('origin_anchor', event.target.value)}>
               <option value="floor_back_left">Floor back left</option>
@@ -464,6 +555,18 @@ export default function ProductDesignerSettingsPage() {
             Current asset: <a href={profile.glb_file_url} target="_blank" rel="noreferrer">download .glb</a>
           </p>
         )}
+
+        <div className="card card-glass" style={{ marginTop: '1rem', padding: '1rem' }}>
+          <div className="pill">Planner publish path</div>
+          <p className="muted" style={{ marginTop: '0.7rem', marginBottom: 0 }}>
+            To make a product appear in the live planner, set <strong>Planner enabled</strong>, choose both the <strong>planner role</strong> and <strong>planner category path</strong>, upload a `.glb`, run asset validation, move the product to staging, and then publish it.
+          </p>
+          {plannerBreadcrumb && (
+            <p className="muted" style={{ marginTop: '0.7rem', marginBottom: 0 }}>
+              Current planner path: <strong>{plannerBreadcrumb}</strong>
+            </p>
+          )}
+        </div>
 
         <div style={{ display: 'grid', gap: '1rem', marginTop: '1.5rem' }}>
           <label className="form-field">

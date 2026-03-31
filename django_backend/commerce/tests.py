@@ -1,4 +1,5 @@
 from rest_framework.test import APITestCase
+from rest_framework.authtoken.models import Token
 
 from commerce.models import CartItem, Order
 from core.models import Category, Product, User
@@ -19,6 +20,18 @@ class CartApiTests(APITestCase):
         self.assertEqual(response.data['cart']['total_quantity'], 2)
         self.assertEqual(len(response.data['cart']['items']), 1)
         self.assertEqual(response.data['cart']['items'][0]['product']['id'], self.product.id)
+
+    def test_token_auth_can_access_cart_endpoints(self):
+        self.client.force_authenticate(user=None)
+        token = Token.objects.create(user=self.user)
+
+        response = self.client.get(
+            '/api/cart/',
+            HTTP_AUTHORIZATION=f'Token {token.key}',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['total_quantity'], 0)
 
     def test_locked_bundle_item_cannot_be_removed(self):
         project = KitchenProject.objects.create(owner=self.user, title='Bundle project')

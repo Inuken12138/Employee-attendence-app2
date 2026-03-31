@@ -6,11 +6,13 @@ interface Employee {
   id: number;
   name: string;
   base_salary: number;
+  worker_id: string | null;
+  is_active: boolean;
 }
 
 export default function EmployeeCrudPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [newEmployee, setNewEmployee] = useState({ name: '', salary: '' });
+  const [newEmployee, setNewEmployee] = useState({ name: '', salary: '', workerId: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const { showErrorPopup } = useErrorPopup();
 
@@ -35,15 +37,72 @@ export default function EmployeeCrudPage() {
         body: JSON.stringify({
           name: newEmployee.name,
           base_salary: parseFloat(newEmployee.salary),
+          worker_id: newEmployee.workerId.trim() || null,
+          is_active: true,
         }),
       });
 
       if (response.ok) {
-        setNewEmployee({ name: '', salary: '' });
+        setNewEmployee({ name: '', salary: '', workerId: '' });
         fetchEmployees();
       }
     } catch {
       showErrorPopup('Error creating employee.');
+    }
+  };
+
+  const toggleEmployeeStatus = async (employee: Employee) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/employees/${employee.id}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          is_active: !employee.is_active,
+        }),
+      });
+
+      if (response.ok) {
+        fetchEmployees();
+        return;
+      }
+
+      showErrorPopup('Error updating employee status.');
+    } catch {
+      showErrorPopup('Error updating employee status.');
+    }
+  };
+
+  const editWorkerId = async (employee: Employee) => {
+    const nextWorkerId = window.prompt(
+      'Worker ID used to match attendance sheet rows:',
+      employee.worker_id || '',
+    );
+
+    if (nextWorkerId === null) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/employees/${employee.id}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          worker_id: nextWorkerId.trim() || null,
+        }),
+      });
+
+      if (response.ok) {
+        fetchEmployees();
+        return;
+      }
+
+      showErrorPopup('Error updating worker ID.');
+    } catch {
+      showErrorPopup('Error updating worker ID.');
     }
   };
 
@@ -82,7 +141,7 @@ export default function EmployeeCrudPage() {
       <div className="kicker">Employee Records</div>
       <h1 className="hero-title" style={{ fontSize: 'clamp(2rem, 4vw, 3rem)' }}>Keep every staff detail aligned.</h1>
       <p className="hero-copy">
-        Add new hires, update salary baselines, and search the roster instantly.
+        Add new hires, maintain the worker ID used for attendance matching, and control who stays active in payroll.
       </p>
 
       <div className="grid-2" style={{ marginTop: '2rem' }}>
@@ -110,6 +169,16 @@ export default function EmployeeCrudPage() {
                 className="input"
                 placeholder="e.g. 1200000"
                 required
+              />
+            </div>
+            <div className="form-field">
+              <label>Worker ID</label>
+              <input
+                type="text"
+                value={newEmployee.workerId}
+                onChange={(e) => setNewEmployee({ ...newEmployee, workerId: e.target.value })}
+                className="input"
+                placeholder="Attendance sheet ID / 工号"
               />
             </div>
             <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }}>
@@ -146,7 +215,7 @@ export default function EmployeeCrudPage() {
 
       <div className="card card-glass" style={{ marginTop: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem' }}>
-          <h2 className="section-title">Active Employees</h2>
+          <h2 className="section-title">Employee Directory</h2>
           <span className="pill">Roster</span>
         </div>
         {employees.length === 0 ? (
@@ -157,9 +226,10 @@ export default function EmployeeCrudPage() {
               <thead>
                 <tr>
                   <th>ID</th>
+                  <th>Worker ID</th>
                   <th>Name</th>
                   <th>Salary</th>
-                  <th>Created</th>
+                  <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -167,17 +237,28 @@ export default function EmployeeCrudPage() {
                 {employees.map((employee, index) => (
                   <tr key={employee.id} className={index % 2 === 0 ? 'table-row-highlight' : ''}>
                     <td>{employee.id}</td>
+                    <td>{employee.worker_id || '—'}</td>
                     <td>{employee.name}</td>
                     <td>{employee.base_salary.toLocaleString()}</td>
-                    <td className="muted">—</td>
                     <td>
-                      <button
-                        onClick={() => deleteEmployee(employee.id)}
-                        className="btn btn-outline"
-                        style={{ borderColor: 'rgba(255, 107, 107, 0.4)', color: 'var(--danger)' }}
-                      >
-                        Delete
-                      </button>
+                      <span className="pill" style={{ color: employee.is_active ? '#9cf0b9' : '#f7b07f' }}>
+                        {employee.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                        <button onClick={() => editWorkerId(employee)} className="btn btn-ghost">Edit Worker ID</button>
+                        <button onClick={() => toggleEmployeeStatus(employee)} className="btn btn-outline">
+                          {employee.is_active ? 'Set Inactive' : 'Set Active'}
+                        </button>
+                        <button
+                          onClick={() => deleteEmployee(employee.id)}
+                          className="btn btn-outline"
+                          style={{ borderColor: 'rgba(255, 107, 107, 0.4)', color: 'var(--danger)' }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

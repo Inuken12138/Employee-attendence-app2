@@ -71,16 +71,12 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-""" REST_FRAMEWORK = {
-    # ...existing code...
-    'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
-        'rest_framework.renderers.AdminRenderer',
-        'rest_framework.renderers.HTMLFormRenderer',
-        'rest_framework_markdown.renderers.MarkdownRenderer',
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ],
-} """
+}
 
 # Application definition
 

@@ -51,6 +51,65 @@ class AttendanceRecordsTests(APITestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertIn('employees', response.data)
 		self.assertIn('days_in_month', response.data)
+		for employee in response.data['employees']:
+			self.assertEqual(employee.get('worker_id'), 'E1001')
+
+	def test_parser_filters_out_inactive_or_unknown_workers(self):
+		Employee.objects.create(
+			name='Inactive Employee',
+			base_salary=900000,
+			worker_id='E1002',
+			is_active=False,
+		)
+
+		payload = {
+			'year': 2025,
+			'month': 12,
+			'employees': [
+				{
+					'worker_id': 'E1001',
+					'employee_name': 'Test Employee',
+					'department': 'HR',
+					'days': {
+						'1': {
+							'raw_logs': ['08:00', '12:00', '13:00', '17:00'],
+							'morning': {'in': '08:00', 'out': '12:00', 'status': 'present'},
+							'afternoon': {'in': '13:00', 'out': '17:00', 'status': 'present'},
+						}
+					},
+				},
+				{
+					'worker_id': 'E1002',
+					'employee_name': 'Inactive Employee',
+					'department': 'HR',
+					'days': {
+						'1': {
+							'raw_logs': ['08:00', '12:00', '13:00', '17:00'],
+							'morning': {'in': '08:00', 'out': '12:00', 'status': 'present'},
+							'afternoon': {'in': '13:00', 'out': '17:00', 'status': 'present'},
+						}
+					},
+				},
+				{
+					'worker_id': 'UNKNOWN',
+					'employee_name': 'Unknown Worker',
+					'department': 'HR',
+					'days': {
+						'1': {
+							'raw_logs': ['08:00', '12:00', '13:00', '17:00'],
+							'morning': {'in': '08:00', 'out': '12:00', 'status': 'present'},
+							'afternoon': {'in': '13:00', 'out': '17:00', 'status': 'present'},
+						}
+					},
+				},
+			],
+		}
+
+		save_response = self.client.post('/api/payroll/attendance-records/save/', payload, format='json')
+
+		self.assertEqual(save_response.status_code, 200)
+		self.assertEqual(len(save_response.data['employees']), 1)
+		self.assertEqual(save_response.data['employees'][0]['worker_id'], 'E1001')
 
 	def test_save_draft_and_fetch(self):
 		payload = {
@@ -135,3 +194,33 @@ class AttendanceRecordsTests(APITestCase):
 		fetch_response = self.client.get('/api/payroll/attendance-records/?year=2025&month=9')
 		self.assertEqual(fetch_response.status_code, 200)
 		self.assertEqual(fetch_response.data.get('status'), 'final')
+
+	def test_fetch_hides_rows_for_now_inactive_workers(self):
+		payload = {
+			'year': 2025,
+			'month': 8,
+			'employees': [
+				{
+					'worker_id': 'E1001',
+					'employee_name': 'Test Employee',
+					'department': 'HR',
+					'days': {
+						'1': {
+							'raw_logs': ['08:00', '12:00', '13:00', '17:00'],
+							'morning': {'in': '08:00', 'out': '12:00', 'status': 'present'},
+							'afternoon': {'in': '13:00', 'out': '17:00', 'status': 'present'},
+						}
+					},
+				}
+			],
+		}
+
+		save_response = self.client.post('/api/payroll/attendance-records/save/', payload, format='json')
+		self.assertEqual(save_response.status_code, 200)
+
+		self.employee.is_active = False
+		self.employee.save(update_fields=['is_active'])
+
+		fetch_response = self.client.get('/api/payroll/attendance-records/?year=2025&month=8')
+		self.assertEqual(fetch_response.status_code, 200)
+		self.assertEqual(fetch_response.data['employees'], [])

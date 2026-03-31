@@ -390,6 +390,24 @@ def _row_contains_tokens(row, tokens):
     return all(any(token in str(cell) for cell in row_text) for token in tokens)
 
 
+def _get_active_employee_by_worker_id(worker_id):
+    normalized_worker_id = str(worker_id or '').strip()
+    if not normalized_worker_id:
+        return None
+
+    return Employee.objects.filter(worker_id=normalized_worker_id, is_active=True).first()
+
+
+def _record_employee_is_active(record_employee):
+    if record_employee.employee_id:
+        employee_obj = getattr(record_employee, 'employee', None)
+        if employee_obj is None:
+            employee_obj = Employee.objects.filter(pk=record_employee.employee_id).first()
+        return bool(employee_obj and employee_obj.is_active)
+
+    return _get_active_employee_by_worker_id(record_employee.worker_id) is not None
+
+
 def _parse_attendance_sheet_records(file_obj, year=None, month=None):
     df = pd.read_excel(file_obj, header=None)
 
@@ -463,10 +481,9 @@ def _parse_attendance_sheet_records(file_obj, year=None, month=None):
                 times.extend(cell_tokens)
             day_logs[str(day_int)] = times
 
-        if employee_id:
-            matched_employee = Employee.objects.filter(worker_id=employee_id).first()
-            if matched_employee and not matched_employee.is_active:
-                continue
+        matched_employee = _get_active_employee_by_worker_id(employee_id)
+        if matched_employee is None:
+            continue
 
         results.append({
             'employee_id': employee_id,
@@ -505,6 +522,9 @@ def _serialize_attendance_record(record):
     employees_payload = []
 
     for record_employee in record.employees.select_related('employee').prefetch_related('shifts'):
+        if not _record_employee_is_active(record_employee):
+            continue
+
         day_map = {}
         for day in range(1, last_day + 1):
             day_map[str(day)] = {
@@ -603,9 +623,9 @@ def _save_attendance_payload(payload, status):
             employee_name = str(employee_payload.get('employee_name') or '').strip()
             department = str(employee_payload.get('department') or '').strip()
 
-            employee_obj = None
-            if worker_id:
-                employee_obj = Employee.objects.filter(worker_id=worker_id).first()
+            employee_obj = _get_active_employee_by_worker_id(worker_id)
+            if employee_obj is None:
+                continue
 
             record_employee = AttendanceRecordEmployee.objects.create(
                 record=record,

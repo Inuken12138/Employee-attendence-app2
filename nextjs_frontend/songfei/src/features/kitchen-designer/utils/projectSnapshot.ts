@@ -24,7 +24,7 @@ export function buildPlannerSnapshot({
 }): PlannerProjectSnapshot {
   return {
     schemaVersion: 1,
-    room,
+    room: { ...room },
     items: nodes,
     metadata: {
       units: 'mm',

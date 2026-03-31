@@ -30,6 +30,7 @@ from planner.serializers import (
 from planner.services.asset_validation import validate_designer_profile
 from planner.services.bom import build_project_bom
 from planner.services.validation import validate_project_version
+from planner.taxonomy import planner_path_is_complete
 
 
 class PlannerProductProfileDetailView(APIView):
@@ -94,6 +95,12 @@ class PlannerProductCatalogStateView(APIView):
         if action == 'stage':
             if not profile.is_enabled:
                 return Response({'detail': 'Enable planner support before staging this product.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not planner_path_is_complete(
+                profile.planner_root_category,
+                profile.planner_group_category,
+                profile.planner_leaf_category,
+            ):
+                return Response({'detail': 'Select a complete planner category path before staging this product.'}, status=status.HTTP_400_BAD_REQUEST)
             if not profile.glb_file:
                 return Response({'detail': 'Upload a .glb asset before staging this product.'}, status=status.HTTP_400_BAD_REQUEST)
             if not self._latest_validation_passed(profile):
@@ -180,6 +187,18 @@ class PlannerCatalogProductListView(APIView):
             kitchen_designer_profile__is_enabled=True,
             kitchen_designer_profile__catalog_state=KitchenDesignerProductProfile.CatalogState.PUBLISHED,
         ).order_by('name')
+
+        root_category = request.query_params.get('root_category')
+        group_category = request.query_params.get('group_category')
+        leaf_category = request.query_params.get('leaf_category')
+
+        if root_category:
+            queryset = queryset.filter(kitchen_designer_profile__planner_root_category=root_category)
+        if group_category:
+            queryset = queryset.filter(kitchen_designer_profile__planner_group_category=group_category)
+        if leaf_category:
+            queryset = queryset.filter(kitchen_designer_profile__planner_leaf_category=leaf_category)
+
         serializer = PlannerCatalogProductSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 

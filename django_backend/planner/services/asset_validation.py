@@ -5,6 +5,7 @@ from planner.models import (
     KitchenDesignerProductProfile,
     MAX_GLB_FILE_SIZE_BYTES,
 )
+from planner.taxonomy import planner_path_is_complete
 
 
 def validate_designer_profile(profile: KitchenDesignerProductProfile, validated_by=None):
@@ -34,6 +35,13 @@ def validate_designer_profile(profile: KitchenDesignerProductProfile, validated_
 
     if not profile.planner_role:
         warnings.append('Select a planner role before publishing.')
+
+    if not planner_path_is_complete(
+        profile.planner_root_category,
+        profile.planner_group_category,
+        profile.planner_leaf_category,
+    ):
+        warnings.append('Pick a complete planner category path before publishing this product to the live planner catalog.')
 
     status = KitchenDesignerAssetValidation.Status.FAILED if errors else KitchenDesignerAssetValidation.Status.PASSED
 

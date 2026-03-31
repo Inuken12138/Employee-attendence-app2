@@ -10,17 +10,30 @@ export interface PlannerCatalogProduct {
   image_url: string | null;
   planner_profile_id: number;
   planner_role: string;
+  planner_root_category: string;
+  planner_group_category: string;
+  planner_leaf_category: string;
   width_mm: number | null;
   depth_mm: number | null;
   height_mm: number | null;
   glb_file_url: string | null;
 }
 
+export interface PlannerTaxonomyPath {
+  rootCategory: string;
+  groupCategory: string;
+  leafCategory: string;
+}
+
 export interface PlannerNode {
   nodeId: string;
   productId: number;
+  productCode: string;
+  slug: string;
   label: string;
   plannerRole: string;
+  glbFileUrl: string | null;
+  imageUrl: string | null;
   widthMm: number;
   depthMm: number;
   heightMm: number;
@@ -33,7 +46,18 @@ export interface PlannerNode {
   price: number;
 }
 
+export type PlannerStage = 'define-space' | 'make-it-yours' | 'make-it-happen';
+
+export type PlannerWallSide = 'top' | 'right' | 'bottom' | 'left';
+
+export type PlannerInteractionMode = 'inspect' | 'move' | 'rotate';
+
 export interface PlannerRoom {
+  shape: 'rectangle';
+  topMm: number;
+  rightMm: number;
+  bottomMm: number;
+  leftMm: number;
   widthMm: number;
   depthMm: number;
   heightMm: number;

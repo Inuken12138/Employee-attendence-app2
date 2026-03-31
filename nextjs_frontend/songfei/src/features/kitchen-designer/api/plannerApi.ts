@@ -3,6 +3,7 @@ import { apiJson } from '@/lib/api';
 import type {
   PlannerAddToBagResponse,
   PlannerCatalogProduct,
+  PlannerTaxonomyPath,
   PlannerDuplicateResponse,
   PlannerProject,
   PlannerProjectReviewResponse,
@@ -13,8 +14,26 @@ import type {
   PlannerProjectValidationResponse,
 } from '../types/planner';
 
-export async function fetchPlannerCatalogProducts(): Promise<PlannerCatalogProduct[]> {
-  return apiJson<PlannerCatalogProduct[]>('/planner/catalog/products/');
+export async function fetchPlannerCatalogProducts(
+  filters: Partial<PlannerTaxonomyPath> = {},
+): Promise<PlannerCatalogProduct[]> {
+  const params = new URLSearchParams();
+
+  if (filters.rootCategory) {
+    params.set('root_category', filters.rootCategory);
+  }
+
+  if (filters.groupCategory) {
+    params.set('group_category', filters.groupCategory);
+  }
+
+  if (filters.leafCategory) {
+    params.set('leaf_category', filters.leafCategory);
+  }
+
+  const queryString = params.toString();
+
+  return apiJson<PlannerCatalogProduct[]>(`/planner/catalog/products/${queryString ? `?${queryString}` : ''}`);
 }
 
 export async function fetchPlannerCatalogProduct(productId: number): Promise<PlannerCatalogProduct> {

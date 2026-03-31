@@ -249,3 +249,10 @@ quickly access the db:
 
 
 You can enable the reusable error popup UI by using the ErrorPopup component together with the useErrorPopup hook in the frontend.
+
+
+Dev account for logging into the ecommerce website
+
+    username: renhua
+    email: luorenhua.com@gmail.com
+    password: laowewanxiang

@@ -7,23 +7,41 @@ import { useCallback, useEffect, useState } from 'react';
 import useErrorPopup from '@/app/hooks/useErrorPopup';
 import { hasAuthToken } from '@/lib/auth';
 
+import {
+  canNavigateToPlannerStage,
+  getNextPlannerStage,
+  isPlannerRoomValid,
+} from '../lib/measurementMath';
+import { formatPlannerBreadcrumb } from '../lib/plannerTaxonomy';
 import { createPlannerProjectVersion, createPlannerShareLink, fetchPlannerProject } from '../api/plannerApi';
 import { usePlannerStore } from '../state/plannerStore';
-import type { PlannerProject } from '../types/planner';
+import type { PlannerProject, PlannerTaxonomyPath } from '../types/planner';
 import { buildPlannerSnapshot } from '../utils/projectSnapshot';
-import DesignerCanvas from '../scene/DesignerCanvas';
-import InspectorPanel from './InspectorPanel';
-import PriceBar from './PriceBar';
-import ProductCatalogPanel from './ProductCatalogPanel';
-import Toolbar from './Toolbar';
+import FloorPlanEditor2D from '../components/FloorPlanEditor2D';
+import MakeItYoursToolbar from '../components/MakeItYoursToolbar';
+import PlannerHeader from '../components/PlannerHeader';
+import PlannerProductDrawer from '../components/PlannerProductDrawer';
+import PlannerReviewShell from '../components/PlannerReviewShell';
+import PlannerSubheader from '../components/PlannerSubheader';
+import RoomScene3D from '../components/RoomScene3D';
+import RoomShapePicker from '../components/RoomShapePicker';
 
 export default function DesignerShell({ projectId }: { projectId: string }) {
   const router = useRouter();
   const { showErrorPopup } = useErrorPopup();
   const setProjectId = usePlannerStore((state) => state.setProjectId);
+  const stage = usePlannerStore((state) => state.stage);
+  const setStage = usePlannerStore((state) => state.setStage);
+  const initializeRoomShape = usePlannerStore((state) => state.initializeRoomShape);
   const hydrateFromSnapshot = usePlannerStore((state) => state.hydrateFromSnapshot);
   const resetProject = usePlannerStore((state) => state.resetProject);
   const room = usePlannerStore((state) => state.room);
+  const activeWall = usePlannerStore((state) => state.activeWall);
+  const editingMeasurement = usePlannerStore((state) => state.editingMeasurement);
+  const setActiveWall = usePlannerStore((state) => state.setActiveWall);
+  const setEditingMeasurement = usePlannerStore((state) => state.setEditingMeasurement);
+  const updateWallMeasurement = usePlannerStore((state) => state.updateWallMeasurement);
+  const updateRoomHeight = usePlannerStore((state) => state.updateRoomHeight);
   const nodes = usePlannerStore((state) => state.nodes);
   const [project, setProject] = useState<PlannerProject | null>(null);
   const [loadingProject, setLoadingProject] = useState(false);
@@ -31,10 +49,18 @@ export default function DesignerShell({ projectId }: { projectId: string }) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [sharePath, setSharePath] = useState<string | null>(null);
   const [sharingProject, setSharingProject] = useState(false);
+  const [shapePickerOpen, setShapePickerOpen] = useState(false);
+  const [cabinetMenuOpen, setCabinetMenuOpen] = useState(false);
+  const [productDrawerOpen, setProductDrawerOpen] = useState(false);
+  const [activeCatalogPath, setActiveCatalogPath] = useState<PlannerTaxonomyPath | null>(null);
 
   const isPersistedProject = !projectId.startsWith('draft-');
   const isAuthenticated = hasAuthToken();
   const total = nodes.reduce((sum, node) => sum + node.price, 0);
+  const canContinue = isPlannerRoomValid(room);
+  const selectedCatalogBreadcrumb = activeCatalogPath
+    ? formatPlannerBreadcrumb(activeCatalogPath)
+    : 'Cabinets / Choose a cabinet type';
 
   useEffect(() => {
     setProjectId(projectId);
@@ -121,6 +147,116 @@ export default function DesignerShell({ projectId }: { projectId: string }) {
     }
   };
 
+  const handleStageSelection = (nextStage: typeof stage) => {
+    if (!canNavigateToPlannerStage(stage, nextStage, room)) {
+      showErrorPopup('Complete the room dimensions before moving forward in the planner flow.');
+      return;
+    }
+
+    setStage(nextStage);
+  };
+
+  const handleContinue = () => {
+    const nextStage = getNextPlannerStage(stage);
+
+    if (!nextStage) {
+      return;
+    }
+
+    handleStageSelection(nextStage);
+  };
+
+  const renderStageContent = () => {
+    if (stage === 'define-space') {
+      return (
+        <div className="planner-stage-layout">
+          <FloorPlanEditor2D
+            room={room}
+            activeWall={activeWall}
+            editingMeasurement={editingMeasurement}
+            onActiveWallChange={setActiveWall}
+            onEditingMeasurementChange={setEditingMeasurement}
+            onWallChange={updateWallMeasurement}
+          />
+          <div className="planner-stage-sidebar">
+            <div className="card card-glass">
+              <div className="pill">Room snapshot</div>
+              <div className="planner-sidebar-copy">
+                The room starts from a four-wall shell with exact millimeter editing. The 3D view will reuse this same store without a translation step.
+              </div>
+              <div className="planner-room-dimension-list">
+                <span>Top wall: {room.topMm} mm</span>
+                <span>Right wall: {room.rightMm} mm</span>
+                <span>Bottom wall: {room.bottomMm} mm</span>
+                <span>Left wall: {room.leftMm} mm</span>
+                <span>Ceiling: {room.heightMm} mm</span>
+              </div>
+            </div>
+            <div className="card">
+              <div className="planner-sidebar-title">What this slice covers</div>
+              <div className="planner-sidebar-copy">
+                2D floor-plan editing, stage navigation, and a persistent planner shell are now implemented. Doors, windows, cabinet placement, and rule validation stay in the next layer.
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (stage === 'make-it-yours') {
+      return (
+        <>
+          <MakeItYoursToolbar
+            menuOpen={cabinetMenuOpen}
+            selectedPath={activeCatalogPath}
+            onToggleCabinets={() => setCabinetMenuOpen((current) => !current)}
+            onChoosePath={(path) => {
+              setActiveCatalogPath(path);
+              setCabinetMenuOpen(false);
+              setProductDrawerOpen(true);
+            }}
+          />
+          <div className={`planner-stage-layout planner-stage-layout-room${productDrawerOpen ? ' planner-stage-layout-room-with-drawer' : ''}`}>
+            <PlannerProductDrawer
+              open={productDrawerOpen}
+              selectedPath={activeCatalogPath}
+              onClose={() => setProductDrawerOpen(false)}
+            />
+            <RoomScene3D room={room} />
+            <div className="planner-stage-sidebar">
+              <div className="card card-glass">
+                <div className="pill">Placement controls</div>
+                <div className="planner-sidebar-title">Cabinet placement is back in the room stage</div>
+                <div className="planner-sidebar-copy">
+                  Start with <strong>Cabinets</strong>, then choose a real planner path such as <strong>Base cabinets / With door</strong> or <strong>Base cabinets / For corner</strong>. Published planner products appear in the left drawer for the selected path and can be inserted into the scene.
+                </div>
+              </div>
+              <div className="card">
+                <div className="planner-room-dimension-list">
+                  <span>Selected path: {selectedCatalogBreadcrumb}</span>
+                  <span>Envelope width: {room.widthMm} mm</span>
+                  <span>Envelope depth: {room.depthMm} mm</span>
+                  <span>Ceiling height: {room.heightMm} mm</span>
+                  <span>Snap grid: 50 mm</span>
+                  <span>Wall snap threshold: 140 mm</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    return (
+      <PlannerReviewShell
+        projectId={projectId}
+        room={room}
+        estimatedTotal={total}
+        isPersistedProject={isPersistedProject}
+      />
+    );
+  };
+
   return (
     <div style={{ display: 'grid', gap: '1.25rem' }}>
       <div className="card card-glass" style={{ padding: '1rem 1.2rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -162,13 +298,30 @@ export default function DesignerShell({ projectId }: { projectId: string }) {
           </div>
         </div>
       )}
-      <PriceBar />
-      <Toolbar />
-      <div style={{ display: 'grid', gridTemplateColumns: '320px minmax(0, 1fr) 320px', gap: '1.25rem', alignItems: 'start' }}>
-        <ProductCatalogPanel />
-        <DesignerCanvas />
-        <InspectorPanel />
-      </div>
+      <PlannerHeader
+        stage={stage}
+        onSelectStage={handleStageSelection}
+        canSelectStage={(targetStage) => canNavigateToPlannerStage(stage, targetStage, room)}
+      />
+      <PlannerSubheader
+        stage={stage}
+        room={room}
+        estimatedTotal={total}
+        canContinue={canContinue && getNextPlannerStage(stage) !== null}
+        onContinue={handleContinue}
+        onOpenShapePicker={() => setShapePickerOpen(true)}
+        onHeightChange={updateRoomHeight}
+      />
+      {renderStageContent()}
+      <RoomShapePicker
+        open={shapePickerOpen}
+        onClose={() => setShapePickerOpen(false)}
+        onSelectRectangle={() => {
+          initializeRoomShape('rectangle');
+          setShapePickerOpen(false);
+          setStatusMessage('Rectangular room initialized with the default 4000 mm × 4000 mm × 2500 mm seed.');
+        }}
+      />
     </div>
   );
 }

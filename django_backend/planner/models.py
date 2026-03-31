@@ -6,6 +6,7 @@ from django.db import models
 from django.utils.text import slugify
 
 from core.models import Product, User
+from planner.taxonomy import get_planner_group_choices, get_planner_root_choices
 
 
 MAX_GLB_FILE_SIZE_BYTES = 25 * 1024 * 1024
@@ -53,6 +54,9 @@ class KitchenDesignerProductProfile(models.Model):
     is_enabled = models.BooleanField(default=False)
     catalog_state = models.CharField(max_length=20, choices=CatalogState.choices, default=CatalogState.DRAFT)
     planner_role = models.CharField(max_length=20, choices=PlannerRole.choices, blank=True)
+    planner_root_category = models.CharField(max_length=40, choices=get_planner_root_choices(), blank=True)
+    planner_group_category = models.CharField(max_length=40, choices=get_planner_group_choices(), blank=True)
+    planner_leaf_category = models.CharField(max_length=80, blank=True)
     glb_file = models.FileField(
         upload_to=_profile_upload_path,
         blank=True,

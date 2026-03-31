@@ -76,9 +76,9 @@ export default function KitchenDesignerLandingPage() {
       <section className="hero">
         <div>
           <div className="kicker">Kitchen designer prototype</div>
-          <h1 className="hero-title">Shape the room. Drop in real modules. Start pricing instantly.</h1>
+          <h1 className="hero-title">Define the room first. Lock the shell. Bring cabinets in after that.</h1>
           <p className="hero-copy">
-            This first shell connects the ERP-published planner catalog to a live React Three Fiber scene so the project can move from planning doc to working product.
+            The current vertical slice implements the room-definition journey: 2D floor-plan editing, live millimeter controls, a Three.js room preview, and the final review shell that later planner outputs will use.
           </p>
           <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', marginTop: '1.5rem' }}>
             <button type="button" className="btn btn-primary" onClick={() => void handleStart()} disabled={creatingProject}>
@@ -99,10 +99,10 @@ export default function KitchenDesignerLandingPage() {
           <div className="pill">Current vertical slice</div>
           <div style={{ display: 'grid', gap: '1rem', marginTop: '1.2rem' }}>
             {[
-              'Planner product profile + staging workflow',
-              'Dedicated ERP designer settings page',
-              'Published planner catalog endpoint',
-              'Initial Three.js editor shell with room and cabinet blocks',
+              'Stage header: Define your space → Make it yours → Make it happen',
+              'SVG-based wall editing with exact millimeter entry',
+              'React Three Fiber room preview driven by the same store',
+              'Placeholder review shell ready for future elevations and proceed actions',
             ].map((item) => (
               <div key={item} style={{ display: 'flex', gap: '0.8rem', alignItems: 'flex-start' }}>
                 <span style={{ color: 'var(--accent-2)' }}>✦</span>
