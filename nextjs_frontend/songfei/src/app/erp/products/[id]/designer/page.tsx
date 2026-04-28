@@ -52,6 +52,7 @@ interface DesignerProfile {
   width_mm: number | null;
   depth_mm: number | null;
   height_mm: number | null;
+  allow_vertical_movement: boolean;
   bounding_box_mm: Record<string, unknown>;
   origin_anchor: string;
   default_rotation_deg: number;
@@ -80,6 +81,7 @@ interface DesignerFormState {
   width_mm: string;
   depth_mm: string;
   height_mm: string;
+  allow_vertical_movement: boolean;
   origin_anchor: string;
   default_rotation_deg: string;
   requires_wall_attachment: boolean;
@@ -105,6 +107,7 @@ const defaultForm: DesignerFormState = {
   width_mm: '',
   depth_mm: '',
   height_mm: '',
+  allow_vertical_movement: false,
   origin_anchor: 'floor_back_left',
   default_rotation_deg: '0',
   requires_wall_attachment: false,
@@ -130,6 +133,24 @@ const productionAssetTypes = [
   { value: 'manufacturing_pdf', label: 'Manufacturing PDF' },
   { value: 'other', label: 'Other' },
 ];
+
+function formatValidationIssues(items: string[]) {
+  return items.map((item) => `- ${item}`).join('\n');
+}
+
+function formatValidationPopupMessage(validation: LatestValidation) {
+  const sections: string[] = [];
+
+  if (validation.errors.length > 0) {
+    sections.push(`Errors\n${formatValidationIssues(validation.errors)}`);
+  }
+
+  if (validation.warnings.length > 0) {
+    sections.push(`Still required before publish\n${formatValidationIssues(validation.warnings)}`);
+  }
+
+  return sections.join('\n\n') || 'The validation run did not return any issues.';
+}
 
 export default function ProductDesignerSettingsPage() {
   const params = useParams();
@@ -192,6 +213,7 @@ export default function ProductDesignerSettingsPage() {
         width_mm: data.width_mm?.toString() || '',
         depth_mm: data.depth_mm?.toString() || '',
         height_mm: data.height_mm?.toString() || '',
+        allow_vertical_movement: Boolean(data.allow_vertical_movement),
         origin_anchor: data.origin_anchor || 'floor_back_left',
         default_rotation_deg: data.default_rotation_deg?.toString() || '0',
         requires_wall_attachment: data.requires_wall_attachment,
@@ -232,13 +254,16 @@ export default function ProductDesignerSettingsPage() {
     }
   };
 
-  const handleSave = async () => {
+  const saveProfile = async ({ showSavedMessage = true }: { showSavedMessage?: boolean } = {}) => {
     if (!productId) {
-      return;
+      return null;
     }
 
     setSaving(true);
-    setStatusMessage(null);
+
+    if (showSavedMessage) {
+      setStatusMessage(null);
+    }
 
     try {
       const formData = new FormData();
@@ -247,6 +272,7 @@ export default function ProductDesignerSettingsPage() {
       formData.append('planner_root_category', form.planner_root_category);
       formData.append('planner_group_category', form.planner_group_category);
       formData.append('planner_leaf_category', form.planner_leaf_category);
+      formData.append('allow_vertical_movement', String(form.allow_vertical_movement));
       formData.append('origin_anchor', form.origin_anchor);
       formData.append('default_rotation_deg', form.default_rotation_deg || '0');
       formData.append('requires_wall_attachment', String(form.requires_wall_attachment));
@@ -274,13 +300,21 @@ export default function ProductDesignerSettingsPage() {
 
       setProfile(data);
       setGlbFile(null);
-      setStatusMessage('Designer settings saved.');
+      if (showSavedMessage) {
+        setStatusMessage('Designer settings saved.');
+      }
+      return data;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save designer settings.';
       showErrorPopup(message);
+      return null;
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = async () => {
+    await saveProfile();
   };
 
   const handleValidate = async () => {
@@ -291,11 +325,26 @@ export default function ProductDesignerSettingsPage() {
     setActionLoading('validate');
     setStatusMessage(null);
     try {
+      const savedProfile = await saveProfile({ showSavedMessage: false });
+
+      if (!savedProfile) {
+        return;
+      }
+
       const validation = await apiJson<LatestValidation>(`/planner/erp/products/${productId}/asset-validate/`, {
         method: 'POST',
       });
       setProfile((current) => (current ? { ...current, latest_validation: validation } : current));
-      setStatusMessage(validation.status === 'passed' ? 'Asset validation passed.' : 'Asset validation completed with errors.');
+      if (validation.status === 'passed') {
+        setStatusMessage(
+          validation.warnings.length > 0
+            ? 'Asset validation passed with warnings. Review the validation panel before staging.'
+            : 'Asset validation passed.',
+        );
+      } else {
+        setStatusMessage(null);
+        showErrorPopup(`Asset validation completed with errors.\n\n${formatValidationPopupMessage(validation)}`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to run asset validation.';
       showErrorPopup(message);
@@ -533,6 +582,10 @@ export default function ProductDesignerSettingsPage() {
 
         <div style={{ display: 'flex', gap: '1.2rem', flexWrap: 'wrap', marginTop: '1rem' }}>
           <label className="form-field" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+            <input type="checkbox" checked={form.allow_vertical_movement} onChange={(event) => updateForm('allow_vertical_movement', event.target.checked)} />
+            <span>Allow vertical movement in 3D designer</span>
+          </label>
+          <label className="form-field" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
             <input type="checkbox" checked={form.requires_wall_attachment} onChange={(event) => updateForm('requires_wall_attachment', event.target.checked)} />
             <span>Requires wall attachment</span>
           </label>
@@ -626,7 +679,7 @@ export default function ProductDesignerSettingsPage() {
               <span className="pill">Size: {Math.round((profile.latest_validation.file_size_bytes || 0) / 1024)} KB</span>
             </div>
             {profile.latest_validation.warnings.length > 0 && (
-              <div>
+              <div style={{ color: '#fbbf24' }}>
                 <strong>Warnings</strong>
                 <ul>
                   {profile.latest_validation.warnings.map((warning) => (
@@ -636,7 +689,7 @@ export default function ProductDesignerSettingsPage() {
               </div>
             )}
             {profile.latest_validation.errors.length > 0 && (
-              <div>
+              <div style={{ color: '#f87171' }}>
                 <strong>Errors</strong>
                 <ul>
                   {profile.latest_validation.errors.map((error) => (

@@ -89,6 +89,7 @@ class KitchenDesignerProductProfileSerializer(serializers.ModelSerializer):
             'width_mm',
             'depth_mm',
             'height_mm',
+            'allow_vertical_movement',
             'bounding_box_mm',
             'origin_anchor',
             'default_rotation_deg',
@@ -157,6 +158,7 @@ class PlannerCatalogProductSerializer(serializers.ModelSerializer):
     width_mm = serializers.IntegerField(source='kitchen_designer_profile.width_mm', read_only=True)
     depth_mm = serializers.IntegerField(source='kitchen_designer_profile.depth_mm', read_only=True)
     height_mm = serializers.IntegerField(source='kitchen_designer_profile.height_mm', read_only=True)
+    allow_vertical_movement = serializers.BooleanField(source='kitchen_designer_profile.allow_vertical_movement', read_only=True)
     glb_file_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -179,6 +181,7 @@ class PlannerCatalogProductSerializer(serializers.ModelSerializer):
             'width_mm',
             'depth_mm',
             'height_mm',
+            'allow_vertical_movement',
             'glb_file_url',
         ]
 

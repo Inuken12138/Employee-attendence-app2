@@ -11,7 +11,7 @@ const stageDefinitions: Array<{ stage: PlannerStage; label: string; caption: str
   {
     stage: 'make-it-yours',
     label: 'Make it yours',
-    caption: 'See the room as a live Three.js volume.',
+    caption: 'See the room as a live Babylon scene.',
   },
   {
     stage: 'make-it-happen',

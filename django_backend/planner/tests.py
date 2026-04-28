@@ -36,6 +36,7 @@ class PlannerProductProfileTests(APITestCase):
                 'width_mm': 600,
                 'depth_mm': 580,
                 'height_mm': 720,
+                'allow_vertical_movement': True,
             },
             format='json',
         )
@@ -45,6 +46,7 @@ class PlannerProductProfileTests(APITestCase):
         self.assertEqual(response.data['planner_role'], 'base')
         self.assertEqual(response.data['planner_leaf_category'], 'with_door')
         self.assertEqual(response.data['width_mm'], 600)
+        self.assertTrue(response.data['allow_vertical_movement'])
 
     def test_asset_validation_fails_without_glb(self):
         response = self.client.post(f'/api/planner/erp/products/{self.product.id}/asset-validate/')
@@ -95,6 +97,7 @@ class PlannerProductProfileTests(APITestCase):
             width_mm=600,
             depth_mm=580,
             height_mm=720,
+            allow_vertical_movement=False,
         )
 
         response = self.client.get('/api/planner/catalog/products/')
@@ -104,6 +107,7 @@ class PlannerProductProfileTests(APITestCase):
         self.assertEqual(response.data[0]['id'], self.product.id)
         self.assertEqual(response.data[0]['planner_role'], 'base')
         self.assertEqual(response.data[0]['planner_group_category'], 'base_cabinets')
+        self.assertFalse(response.data[0]['allow_vertical_movement'])
 
     def test_catalog_endpoint_filters_by_planner_path(self):
         KitchenDesignerProductProfile.objects.create(

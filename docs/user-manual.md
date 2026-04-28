@@ -331,6 +331,247 @@ Recommended practice:
 1. Keep category structure tidy before adding large numbers of products.
 2. Use stable product IDs for internal and store operations.
 
+## Publishing Products to the Kitchen Designer
+
+### Purpose
+
+Use the Designer Settings page to enable a product in the live kitchen planner app, configure its 3D properties, upload a 3D model, validate it, and publish it to the catalog where users can see and insert it.
+
+This is a multi-stage workflow with validation checkpoints. Products must pass validation and move through staging before they become available in the planner.
+
+### Prerequisites
+
+Before you publish a product to the designer, you must have:
+
+1. Created the product in the ERP system.
+2. Set the product name, product ID, price, and description.
+3. Assigned the product to a category.
+4. Prepared a `.glb` file (3D model) on your computer. This is a binary format used by the kitchen planner for 3D rendering.
+
+**Important**: Do not proceed without a `.glb` file. The validation step requires it, and publishing will fail without it.
+
+### Step 1: Open the Designer Settings page
+
+1. Go to ERP > Products.
+2. Find the product in the table or use search to locate it by product ID or name.
+3. Click the product name to open its details.
+4. At the bottom of the product details, find a link or button labeled "Go to Designer Settings" or navigate directly to the product's designer page.
+5. You will see the Designer Settings form with the product name and current catalog state displayed.
+
+### Step 2: Enable planner support
+
+1. Locate the "Planner enabled" checkbox near the top of the form.
+2. Check this box to enable the product in the planner system.
+3. Once enabled, additional fields become visible and required.
+
+**Caution**: Do not check this box until you have all the required information and a `.glb` file ready. Enabling early may create validation warnings.
+
+### Step 3: Configure the planner role
+
+1. In the "Planner role" dropdown, select the role that matches how this product will function in the kitchen:
+
+   - **Base cabinet**: Products that sit on the floor and cannot move vertically (kitchen cabinets with drawers, doors, etc.).
+   - **Wall cabinet**: Products mounted to walls and can move vertically (upper cupboards, open shelving).
+   - **Tall cabinet**: Floor-to-ceiling products (pantry cabinets, tall appliance housings).
+   - **Panel**: End panels, filler pieces, decorative panels.
+   - **Benchtop**: Countertops and work surfaces.
+   - **Appliance**: Integrated or standalone appliances (ovens, dishwashers, refrigerators).
+   - **Accessory**: Small items and decorative elements.
+
+**Caution**: Choose the correct role carefully. The role determines how the product behaves in the 3D planner:
+- Base cabinets cannot be lifted vertically by users.
+- Wall cabinets can be moved up and down only if you also enable "Allow vertical movement" (see Step 5).
+- Once published, changing the role requires unpublishing and revalidating.
+
+### Step 4: Select the planner category path
+
+1. In the "Planner root category" dropdown, select the top-level category that contains this product. Common options are:
+   - Cabinets
+   - Appliances
+   - Dining
+   - Kitchen extras
+
+2. Once you select a root category, the "Planner group category" dropdown becomes active.
+
+3. In the "Planner group category" dropdown, select the subcategory:
+   - For Cabinets:
+     - Base cabinets
+     - Wall cabinets
+     - High cabinets
+   - For other root categories, select the appropriate group.
+
+4. Once you select a group category, the "Planner leaf category" dropdown becomes active.
+
+5. In the "Planner leaf category" dropdown, select the specific product type. Examples:
+   - For Base cabinets: "With door", "With drawers", "For corner", "For sink", etc.
+   - For Wall cabinets: "With glass doors", "For rangehood", "Open cupboards", etc.
+
+**Important**: The complete category path (root → group → leaf) must be selected. This determines where the product appears in the kitchen designer's product drawer and who can find it. Choose a path that makes sense for the product's function.
+
+### Step 5: Configure product dimensions and movement
+
+1. Enter the product's physical dimensions in millimeters:
+   - **Width (mm)**: The width of the cabinet from left to right.
+   - **Depth (mm)**: The depth from front to back.
+   - **Height (mm)**: The height from bottom to top.
+
+2. These dimensions are used to scale the 3D model and to calculate placement within the room.
+
+3. If this product should be able to move vertically in the 3D planner (e.g., wall cabinets that can be positioned at different heights), check the "Allow vertical movement in 3D designer" checkbox.
+
+4. If this product requires a wall, check "Requires wall attachment".
+
+5. Use the other constraint checkboxes as needed:
+   - "Requires benchtop": Product must sit on a benchtop (e.g., sink, cooktop).
+   - "Supports left/right end panel": Marks that this cabinet can have end panels attached.
+
+**Caution**: Dimension fields are mandatory for publication. Any missing or zero value will cause validation to fail with a warning. Double-check these values against your 3D model and physical product specifications.
+
+### Step 6: Enter pricing and rotation settings
+
+1. Set the **Default rotation (deg)** (degrees) if the product should start at a non-zero angle when placed. Most products use 0 degrees.
+
+2. If using a product-specific price (different from the general product price set in the product details), select **Pricing mode** as "Override" and enter the **Override price**.
+
+   - Leave pricing mode as "Use product price" if you want the standard product price to apply in the planner.
+
+3. Choose the **Origin anchor** (where the model's origin point is located):
+   - "Floor back left" (default): The model's origin is at floor level, back-left corner.
+   - "Floor back center": Origin at floor level, centered depth-wise.
+   - "Center": Origin at the geometric center of the object.
+
+### Step 7: Upload the 3D model (.glb file)
+
+1. Locate the "Planner .glb asset" upload button.
+
+2. Click the button and select the `.glb` file from your computer.
+
+3. The file will upload and be stored in the system. Once uploaded, you should see a confirmation message.
+
+**Cautions**:
+- Only `.glb` files are accepted. If you have a 3D model in another format (FBX, OBJ, GLTF), convert it to `.glb` using a 3D modeling tool before uploading.
+- Keep the file size reasonable (typically under 10 MB) to avoid slow loading in the planner.
+- The `.glb` file must have correct scale and orientation. Test it in the planner preview after validation to ensure it looks correct.
+
+### Step 8: Save the current settings
+
+1. Before running validation, click the "Save settings" button to persist all configuration changes.
+
+2. You should see a confirmation message.
+
+**Important**: Saving is no longer mandatory before validation. The "Run asset validation" action now saves the current form automatically before checking the asset. Use "Save settings" when you want to keep changes without validating yet, or before leaving the page.
+
+### Step 9: Run asset validation
+
+1. Click the "Run asset validation" button.
+
+2. The system first saves the current Designer Settings form, including any new planner metadata or newly selected `.glb` file.
+
+3. After the save completes, the system analyzes the uploaded `.glb` file and checks all configuration fields against planner requirements.
+
+4. Wait for validation to complete. You should see a "Latest asset validation" section appear below with:
+   - **Status**: Whether validation passed or failed.
+   - **Format**: The detected 3D format (should be glTF or glb).
+   - **Size**: The file size in KB.
+   - **Warnings**: Configuration issues that must be fixed (but do not block staging).
+   - **Errors**: Critical issues that must be fixed before publishing.
+
+**Important**: If validation reports save-related errors first, correct those issues and run validation again. Validation only checks the saved version of the profile.
+
+**What to do if validation fails**:
+
+- Review all warnings and errors.
+- Common errors include:
+  - "Upload a .glb file" (if no file was uploaded).
+  - "Complete width, depth, and height values" (if dimension fields are empty).
+  - "Select a planner role" (if role dropdown is not set).
+  - "Pick a complete planner category path" (if any category level is not selected).
+  - "Planner product is not enabled yet" (check the "Planner enabled" checkbox).
+- Correct the issue and save again.
+- Re-run validation.
+- Repeat until validation passes or fails only on non-critical warnings.
+
+### Step 10: Move the product to staging
+
+1. Once validation passes (or passes with non-critical warnings), click the "Move to staging" button.
+
+2. The product's catalog state will change from "draft" to "staging".
+
+3. You should see a confirmation message.
+
+**Caution**: Staging means the product is being prepared for publication but is not yet visible in the live planner. This is the last review checkpoint before going live.
+
+### Step 11: Review and publish
+
+1. Review the product one more time:
+   - Check the category path is correct.
+   - Verify dimensions and pricing.
+   - Ensure the `.glb` file is the correct version.
+
+2. If you are confident everything is correct, click the "Publish" button.
+
+3. The product's catalog state will change from "staging" to "published".
+
+4. The product now appears in the live kitchen planner app. Users can:
+   - Find it by browsing the correct category path in the planner's product drawer.
+   - Select it and place it in their kitchen design.
+   - Use the product's configured constraints (vertical movement, wall attachment, etc.) during placement.
+
+**Important**: Publishing is a public action. Once published, the product is live in the kitchen planner and can be used by customers or internal testers. Test thoroughly in staging before publishing.
+
+### Step 12: Unpublishing (if needed)
+
+If a published product must be removed from the live planner:
+
+1. Click the "Unpublish" button.
+2. The product moves to "archived" state and is no longer visible in the kitchen planner.
+3. Customers cannot add the product to new designs, but existing designs that use it are not affected.
+
+**Caution**: Unpublishing is not the same as deletion. The product remains in the ERP system and can be re-published later. Use unpublishing for temporary maintenance or for products that should not appear in the planner.
+
+### Troubleshooting the publish workflow
+
+**Problem**: Validation fails with "Upload a .glb file"
+
+- Solution: Click the "Planner .glb asset" button and select a `.glb` file from your computer. Re-run validation.
+
+**Problem**: Validation fails with "Complete width, depth, and height values"
+
+- Solution: Enter the product dimensions in millimeters. All three fields are required. Re-run validation.
+
+**Problem**: Validation fails with "Select a planner role" or "Pick a complete planner category path"
+
+- Solution: Ensure the planner role and all three category levels (root, group, leaf) are selected from their dropdowns. Re-run validation.
+
+**Problem**: Staging or publishing fails
+
+- Solution: Ensure validation has passed (status shows "passed", not "failed"). Correct any errors and re-run validation before trying to stage or publish.
+
+**Problem**: Published product does not appear in the kitchen planner
+
+- Solution:
+  - Confirm the product's catalog state shows "published" (not "staging" or "draft").
+  - Reload the kitchen planner app in the browser.
+  - Navigate to the category path you assigned. The product should appear in the product drawer.
+  - If still not visible, check the category path is correct and try refreshing the page.
+
+### Quick checklist before publishing
+
+Use this checklist to verify everything is ready before clicking publish:
+
+- [ ] "Planner enabled" checkbox is checked.
+- [ ] Planner role is selected.
+- [ ] Root category is selected.
+- [ ] Group category is selected.
+- [ ] Leaf category is selected.
+- [ ] Width, depth, and height are entered in millimeters.
+- [ ] `.glb` file is uploaded.
+- [ ] Asset validation passed.
+- [ ] Product is in "staging" state.
+- [ ] Price and pricing mode are correct.
+- [ ] Constraint checkboxes (vertical movement, wall attachment, etc.) are set correctly.
+- [ ] Origin anchor is set correctly.
+
 ## Good Operating Habits
 
 1. Update worker IDs as soon as a new employee is created.

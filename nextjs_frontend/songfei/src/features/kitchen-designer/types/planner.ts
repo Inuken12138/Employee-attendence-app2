@@ -16,6 +16,7 @@ export interface PlannerCatalogProduct {
   width_mm: number | null;
   depth_mm: number | null;
   height_mm: number | null;
+  allow_vertical_movement: boolean;
   glb_file_url: string | null;
 }
 
@@ -37,6 +38,7 @@ export interface PlannerNode {
   widthMm: number;
   depthMm: number;
   heightMm: number;
+  allowVerticalMovement?: boolean;
   position: {
     x: number;
     y: number;
@@ -50,7 +52,7 @@ export type PlannerStage = 'define-space' | 'make-it-yours' | 'make-it-happen';
 
 export type PlannerWallSide = 'top' | 'right' | 'bottom' | 'left';
 
-export type PlannerInteractionMode = 'inspect' | 'move' | 'rotate';
+export type PlannerInteractionMode = 'inspect' | 'move' | 'rotate' | 'vertical';
 
 export interface PlannerRoom {
   shape: 'rectangle';

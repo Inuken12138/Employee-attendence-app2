@@ -36,9 +36,10 @@ interface PlannerStoreState {
   setActiveWall: (wall: PlannerWallSide | null) => void;
   setEditingMeasurement: (wall: PlannerWallSide | null) => void;
   addNodeFromProduct: (product: PlannerCatalogProduct) => void;
+  removeNode: (nodeId: string) => void;
   selectNode: (nodeId: string | null) => void;
   setInteractionMode: (mode: PlannerInteractionMode) => void;
-  updateNodePosition: (nodeId: string, position: { x: number; z: number }) => void;
+  updateNodePosition: (nodeId: string, position: Partial<{ x: number; y: number; z: number }>) => void;
   updateNodeRotation: (nodeId: string, rotationY: number) => void;
   nudgeSelectedNode: (axis: 'x' | 'z', delta: number) => void;
   hydrateFromSnapshot: (snapshot: PlannerProjectSnapshot) => void;
@@ -49,6 +50,27 @@ export const defaultPlannerRoom: PlannerRoom = buildPlannerRoom();
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getInitialNodeCenterY({
+  allowVerticalMovement,
+  plannerRole,
+  roomHeightMm,
+  nodeHeightMm,
+}: {
+  allowVerticalMovement: boolean;
+  plannerRole: string;
+  roomHeightMm: number;
+  nodeHeightMm: number;
+}) {
+  if (!allowVerticalMovement && plannerRole !== 'wall') {
+    return nodeHeightMm / 2;
+  }
+
+  const desiredBottomMm = Math.max(1350, Math.round(roomHeightMm * 0.56));
+  const centeredY = desiredBottomMm + nodeHeightMm / 2;
+
+  return clamp(centeredY, nodeHeightMm / 2, roomHeightMm - nodeHeightMm / 2);
 }
 
 export const usePlannerStore = create<PlannerStoreState>((set) => ({
@@ -96,6 +118,7 @@ export const usePlannerStore = create<PlannerStoreState>((set) => ({
       const widthMm = product.width_mm || 600;
       const depthMm = product.depth_mm || 580;
       const heightMm = product.height_mm || 720;
+      const allowVerticalMovement = Boolean(product.allow_vertical_movement);
       const spacing = 120;
       const maxX = state.room.widthMm / 2 - widthMm / 2;
       const minX = -maxX;
@@ -117,7 +140,17 @@ export const usePlannerStore = create<PlannerStoreState>((set) => ({
         widthMm,
         depthMm,
         heightMm,
-        position: { x, y: heightMm / 2, z },
+        allowVerticalMovement,
+        position: {
+          x,
+          y: getInitialNodeCenterY({
+            allowVerticalMovement,
+            plannerRole: product.planner_role,
+            roomHeightMm: state.room.heightMm,
+            nodeHeightMm: heightMm,
+          }),
+          z,
+        },
         rotationY: 0,
         price: product.price,
       };
@@ -126,6 +159,16 @@ export const usePlannerStore = create<PlannerStoreState>((set) => ({
         nodes: [...state.nodes, node],
         selectedNodeId: node.nodeId,
         interactionMode: 'inspect',
+      };
+    }),
+  removeNode: (nodeId) =>
+    set((state) => {
+      const removingSelectedNode = state.selectedNodeId === nodeId;
+
+      return {
+        nodes: state.nodes.filter((node) => node.nodeId !== nodeId),
+        selectedNodeId: removingSelectedNode ? null : state.selectedNodeId,
+        interactionMode: removingSelectedNode ? 'inspect' : state.interactionMode,
       };
     }),
   selectNode: (nodeId) => set({ selectedNodeId: nodeId, interactionMode: 'inspect' }),
@@ -138,8 +181,7 @@ export const usePlannerStore = create<PlannerStoreState>((set) => ({
               ...node,
               position: {
                 ...node.position,
-                x: position.x,
-                z: position.z,
+                ...position,
               },
             }
           : node,

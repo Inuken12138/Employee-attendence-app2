@@ -66,6 +66,7 @@ class KitchenDesignerProductProfile(models.Model):
     width_mm = models.PositiveIntegerField(blank=True, null=True)
     depth_mm = models.PositiveIntegerField(blank=True, null=True)
     height_mm = models.PositiveIntegerField(blank=True, null=True)
+    allow_vertical_movement = models.BooleanField(default=False)
     bounding_box_mm = models.JSONField(default=dict, blank=True)
     origin_anchor = models.CharField(max_length=30, choices=OriginAnchor.choices, default=OriginAnchor.FLOOR_BACK_LEFT)
     default_rotation_deg = models.IntegerField(default=0)

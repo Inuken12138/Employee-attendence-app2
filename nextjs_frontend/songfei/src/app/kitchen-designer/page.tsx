@@ -78,7 +78,7 @@ export default function KitchenDesignerLandingPage() {
           <div className="kicker">Kitchen designer prototype</div>
           <h1 className="hero-title">Define the room first. Lock the shell. Bring cabinets in after that.</h1>
           <p className="hero-copy">
-            The current vertical slice implements the room-definition journey: 2D floor-plan editing, live millimeter controls, a Three.js room preview, and the final review shell that later planner outputs will use.
+            The current vertical slice implements the room-definition journey: 2D floor-plan editing, live millimeter controls, a Babylon room preview, and the final review shell that later planner outputs will use.
           </p>
           <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', marginTop: '1.5rem' }}>
             <button type="button" className="btn btn-primary" onClick={() => void handleStart()} disabled={creatingProject}>
@@ -101,7 +101,7 @@ export default function KitchenDesignerLandingPage() {
             {[
               'Stage header: Define your space → Make it yours → Make it happen',
               'SVG-based wall editing with exact millimeter entry',
-              'React Three Fiber room preview driven by the same store',
+              'Babylon room preview driven by the same planner store',
               'Placeholder review shell ready for future elevations and proceed actions',
             ].map((item) => (
               <div key={item} style={{ display: 'flex', gap: '0.8rem', alignItems: 'flex-start' }}>
