@@ -105,10 +105,11 @@ from django.shortcuts import render
 from rest_framework import viewsets, permissions, generics, filters
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Employee, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category, Review, Purchase, AttendanceRecord, AttendanceRecordEmployee, AttendanceShift, EmployeeRosterAssignment, RosterTemplate
-from .serializers import EmployeeSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer, WorkplaceSerializer, EmployeeFaceProfileSerializer, CategorySerializer, ReviewSerializer, RosterTemplateSerializer
+from .models import AttendanceOvertimeDecision, Department, Employee, EmployeeLeaveRecord, EmployeePaidRestRequest, InventoryItem, Product, User, Workplace, EmployeeFaceProfile, Category, Review, Purchase, AttendanceRecord, AttendanceRecordEmployee, AttendanceShift, EmployeeRosterAssignment, RosterTemplate
+from .serializers import AttendanceOvertimeDecisionSerializer, DepartmentSerializer, EmployeeSerializer, EmployeeLeaveRecordSerializer, InventoryItemSerializer, ProductSerializer, UserSerializer, RegisterSerializer, WorkplaceSerializer, EmployeeFaceProfileSerializer, CategorySerializer, ReviewSerializer, RosterTemplateSerializer
 from .utils import (
     build_roster_schedule_lookup,
+    normalize_clock_time,
     normalize_employee_name,
     normalize_worker_id,
     parse_attendance_date_range,
@@ -133,6 +134,10 @@ import pandas as pd
 import re
 import math
 
+
+class AttendanceSheetFormatError(Exception):
+    pass
+
 # Create your views here.
 class IsManager(permissions.BasePermission):
     def has_permission(self, request, view):
@@ -145,7 +150,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     permission_classes = []
 
     def get_queryset(self):
-        return Employee.objects.select_related('roster_assignment__template').all()
+        return Employee.objects.select_related('department', 'roster_assignment__template').all()
 
     @action(detail=True, methods=['post', 'delete'], url_path='roster-assignment')
     def roster_assignment(self, request, pk=None):
@@ -179,6 +184,35 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
         refreshed_employee = self.get_queryset().get(pk=employee.pk)
         return Response(self.get_serializer(refreshed_employee).data)
+
+
+class DepartmentViewSet(viewsets.ModelViewSet):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
+    permission_classes = []
+
+    def get_queryset(self):
+        queryset = Department.objects.all().order_by('name', 'id')
+        active_only = str(self.request.query_params.get('active_only', '')).strip().lower()
+        if active_only in ('1', 'true', 'yes', 'y'):
+            queryset = queryset.filter(is_active=True)
+        return queryset
+
+    def destroy(self, request, *args, **kwargs):
+        department = self.get_object()
+        has_references = (
+            department.employees.exists()
+            or department.paid_rest_requests.exists()
+            or department.paid_rest_balances.exists()
+        )
+        if has_references:
+            if department.is_active:
+                department.is_active = False
+                department.save(update_fields=['is_active', 'updated_at'])
+            return Response(self.get_serializer(department).data)
+
+        department.delete()
+        return Response(status=204)
 
 
 class RosterTemplateViewSet(viewsets.ModelViewSet):
@@ -515,16 +549,16 @@ def _resolve_attendance_period(df, year=None, month=None, filename=''):
     )
 
 
-def _get_active_employee_by_identity(worker_id, employee_name):
+def _get_active_employee_by_identity(worker_id, employee_name=None):
     normalized_worker_id = normalize_worker_id(worker_id)
     normalized_employee_name = normalize_employee_name(employee_name)
     if not normalized_worker_id or not normalized_employee_name:
         return None
 
-    candidates = Employee.objects.filter(worker_id=normalized_worker_id, is_active=True)
-    for candidate in candidates:
-        if normalize_employee_name(candidate.name) == normalized_employee_name:
-            return candidate
+    candidates = Employee.objects.filter(worker_id=normalized_worker_id, is_active=True).order_by('id')
+    for employee in candidates:
+        if normalize_employee_name(employee.name) == normalized_employee_name:
+            return employee
     return None
 
 
@@ -596,6 +630,11 @@ def _parse_attendance_sheet_records(file_obj, year=None, month=None):
     results = []
     total_rows = df.shape[0]
     header_rows = df[df.apply(lambda r: _row_contains_tokens(r, ['工号', '姓名']), axis=1)].index.tolist()
+
+    if not header_rows:
+        raise AttendanceSheetFormatError(
+            'Could not find any employee sections. Expected headers containing 工号 and 姓名.'
+        )
 
     for idx, header_row in enumerate(header_rows):
         row = df.iloc[header_row]
@@ -674,6 +713,102 @@ def _parse_attendance_sheet_records(file_obj, year=None, month=None):
     }
 
 
+def _copy_parsed_employee_payload(employee_payload):
+    copied_day_logs = {}
+    for day_key, logs in (employee_payload.get('day_logs') or {}).items():
+        copied_day_logs[day_key] = list(logs or [])
+
+    return {
+        'employee_db_id': employee_payload.get('employee_db_id'),
+        'employee_id': employee_payload.get('employee_id'),
+        'worker_id': employee_payload.get('worker_id'),
+        'employee_name': employee_payload.get('employee_name'),
+        'department': employee_payload.get('department'),
+        'roster_assignment': employee_payload.get('roster_assignment'),
+        'day_logs': copied_day_logs,
+    }
+
+
+def _merge_attendance_log_tokens(existing_logs, incoming_logs):
+    merged_logs = []
+    seen = set()
+
+    for sequence in (existing_logs or [], incoming_logs or []):
+        for raw_value in sequence:
+            normalized_value = str(raw_value or '').strip()
+            if not normalized_value or normalized_value in seen:
+                continue
+            seen.add(normalized_value)
+            merged_logs.append(normalized_value)
+
+    return merged_logs
+
+
+def _merge_parsed_attendance_payloads(base_payload, incoming_payload):
+    merged_payload = {
+        **base_payload,
+        'employees': [],
+    }
+    merged_employee_lookup = {}
+
+    for employee_payload in base_payload.get('employees') or []:
+        employee_key = employee_payload.get('employee_db_id')
+        if employee_key is None:
+            fallback_worker_id = normalize_worker_id(employee_payload.get('worker_id') or employee_payload.get('employee_id'))
+            fallback_employee_name = normalize_employee_name(employee_payload.get('employee_name'))
+            if not fallback_worker_id or not fallback_employee_name:
+                continue
+            employee_key = (fallback_worker_id, fallback_employee_name)
+        if employee_key is None:
+            continue
+        copied_employee = _copy_parsed_employee_payload(employee_payload)
+        merged_employee_lookup[employee_key] = copied_employee
+        merged_payload['employees'].append(copied_employee)
+
+    for employee_payload in incoming_payload.get('employees') or []:
+        employee_key = employee_payload.get('employee_db_id')
+        if employee_key is None:
+            fallback_worker_id = normalize_worker_id(employee_payload.get('worker_id') or employee_payload.get('employee_id'))
+            fallback_employee_name = normalize_employee_name(employee_payload.get('employee_name'))
+            if not fallback_worker_id or not fallback_employee_name:
+                continue
+            employee_key = (fallback_worker_id, fallback_employee_name)
+        if employee_key is None:
+            continue
+
+        existing_employee = merged_employee_lookup.get(employee_key)
+        if existing_employee is None:
+            copied_employee = _copy_parsed_employee_payload(employee_payload)
+            merged_employee_lookup[employee_key] = copied_employee
+            merged_payload['employees'].append(copied_employee)
+            continue
+
+        existing_employee['department'] = existing_employee.get('department') or employee_payload.get('department')
+        existing_employee['roster_assignment'] = existing_employee.get('roster_assignment') or employee_payload.get('roster_assignment')
+
+        incoming_day_logs = employee_payload.get('day_logs') or {}
+        for day_key, logs in incoming_day_logs.items():
+            existing_employee['day_logs'][day_key] = _merge_attendance_log_tokens(
+                existing_employee['day_logs'].get(day_key),
+                logs,
+            )
+
+    return merged_payload
+
+
+def _get_uploaded_attendance_files(request):
+    uploaded_files = request.FILES.getlist('files')
+    if uploaded_files:
+        return uploaded_files
+
+    uploaded_files = request.FILES.getlist('file')
+    if uploaded_files:
+        return uploaded_files
+
+    single_file = request.FILES.get('file')
+    return [single_file] if single_file else []
+
+
 def _build_shift_payload(shift):
     return {
         'raw_logs': shift.raw_logs or [],
@@ -735,8 +870,231 @@ def _serialize_attendance_record_summary(record):
     }
 
 
+def _parse_time_to_minutes(value):
+    normalized_value = normalize_clock_time(value)
+    if not normalized_value:
+        return None
+
+    hour_text, minute_text = normalized_value.split(':')
+    return int(hour_text) * 60 + int(minute_text)
+
+
+def _determine_leave_shift_targets(leave_record):
+    linked_shift = str(leave_record.linked_attendance_shift or '').strip()
+    if linked_shift in ('morning', 'afternoon'):
+        return [linked_shift]
+
+    if leave_record.duration_unit == 'full_day':
+        return ['morning', 'afternoon']
+
+    start_minutes = _parse_time_to_minutes(leave_record.leave_start_time)
+    end_minutes = _parse_time_to_minutes(leave_record.leave_end_time)
+    if start_minutes is None or end_minutes is None:
+        return ['morning'] if leave_record.duration_unit == 'half_day' else ['morning', 'afternoon']
+
+    targets = []
+    if start_minutes < 12 * 60:
+        targets.append('morning')
+    if end_minutes > 13 * 60 or start_minutes >= 12 * 60:
+        targets.append('afternoon')
+
+    return targets or ['morning']
+
+
+def _determine_paid_rest_shift_targets(paid_rest_request):
+    linked_shift = str(paid_rest_request.linked_attendance_shift or '').strip()
+    if linked_shift in ('morning', 'afternoon'):
+        return [linked_shift]
+    return ['morning', 'afternoon']
+
+
+def _get_leave_overlay_status(leave_record):
+    if leave_record.submission_status == 'approved':
+        return 'approved_leave'
+    if leave_record.submission_status == 'recorded_unapproved':
+        return 'unapproved_leave'
+    return None
+
+
+def _build_leave_record_lookup(year, month, employee_ids):
+    lookup = {}
+    if not employee_ids:
+        return lookup
+
+    leave_records = EmployeeLeaveRecord.objects.filter(
+        employee_id__in=employee_ids,
+        leave_date__year=year,
+        leave_date__month=month,
+        submission_status__in=('approved', 'recorded_unapproved'),
+    ).select_related('employee')
+
+    for leave_record in leave_records:
+        lookup.setdefault((leave_record.employee_id, leave_record.leave_date.isoformat()), []).append(leave_record)
+
+    return lookup
+
+
+def _build_paid_rest_lookup(year, month, employee_ids):
+    lookup = {}
+    if not employee_ids:
+        return lookup
+
+    paid_rest_requests = EmployeePaidRestRequest.objects.filter(
+        employee_id__in=employee_ids,
+        rest_date__year=year,
+        rest_date__month=month,
+        submission_status='approved',
+    ).select_related('employee')
+
+    for paid_rest_request in paid_rest_requests:
+        lookup.setdefault((paid_rest_request.employee_id, paid_rest_request.rest_date.isoformat()), []).append(paid_rest_request)
+
+    return lookup
+
+
+def _has_pending_leave_records(year, month, employee_ids):
+    if not employee_ids:
+        return False
+
+    return EmployeeLeaveRecord.objects.filter(
+        employee_id__in=employee_ids,
+        leave_date__year=year,
+        leave_date__month=month,
+        submission_status__in=('draft', 'submitted'),
+    ).exists()
+
+
+def _has_pending_paid_rest_records(year, month, employee_ids):
+    if not employee_ids:
+        return False
+
+    return EmployeePaidRestRequest.objects.filter(
+        employee_id__in=employee_ids,
+        rest_date__year=year,
+        rest_date__month=month,
+        submission_status__in=('draft', 'submitted'),
+    ).exists()
+
+
+def _overlay_leave_records_on_day_payload(day_payload, leave_records):
+    if not leave_records:
+        return day_payload
+
+    normalized_payload = dict(day_payload)
+    for leave_record in leave_records:
+        leave_status = _get_leave_overlay_status(leave_record)
+        if leave_status is None:
+            continue
+
+        for shift_key in _determine_leave_shift_targets(leave_record):
+            status_key = f'{shift_key}_status'
+            in_key = f'{shift_key}_in'
+            out_key = f'{shift_key}_out'
+
+            if (
+                normalized_payload[status_key] == 'present'
+                and normalized_payload[in_key]
+                and normalized_payload[out_key]
+            ):
+                continue
+
+            normalized_payload[status_key] = leave_status
+            normalized_payload[in_key] = ''
+            normalized_payload[out_key] = ''
+
+    return normalized_payload
+
+
+def _overlay_paid_rest_records_on_day_payload(day_payload, paid_rest_requests):
+    if not paid_rest_requests:
+        return day_payload
+
+    normalized_payload = dict(day_payload)
+    for paid_rest_request in paid_rest_requests:
+        for shift_key in _determine_paid_rest_shift_targets(paid_rest_request):
+            status_key = f'{shift_key}_status'
+            in_key = f'{shift_key}_in'
+            out_key = f'{shift_key}_out'
+
+            normalized_payload[status_key] = 'paid_rest'
+            normalized_payload[in_key] = ''
+            normalized_payload[out_key] = ''
+
+    return normalized_payload
+
+
+def _build_overtime_decision_lookup(year, month, employee_ids):
+    lookup = {}
+    if not employee_ids:
+        return lookup
+
+    decisions = AttendanceOvertimeDecision.objects.filter(
+        employee_id__in=employee_ids,
+        attendance_date__year=year,
+        attendance_date__month=month,
+    )
+
+    for decision in decisions:
+        lookup[(decision.employee_id, decision.attendance_date.isoformat(), decision.attendance_shift)] = decision
+
+    return lookup
+
+
+def _compute_potential_overtime_minutes(day_payload, roster_day, shift_key):
+    if roster_day is None or roster_day.get('is_working') is not True:
+        return 0, '', '', ''
+
+    if day_payload[f'{shift_key}_status'] != 'present':
+        return 0, '', '', ''
+
+    roster_start_time = normalize_clock_time(roster_day.get(f'{shift_key}_in'))
+    roster_end_time = normalize_clock_time(roster_day.get(f'{shift_key}_out'))
+    actual_checkout_time = normalize_clock_time(day_payload[f'{shift_key}_out'])
+
+    roster_end_minutes = _parse_time_to_minutes(roster_end_time)
+    actual_checkout_minutes = _parse_time_to_minutes(actual_checkout_time)
+    if roster_end_minutes is None or actual_checkout_minutes is None or actual_checkout_minutes <= roster_end_minutes:
+        return 0, roster_start_time, roster_end_time, actual_checkout_time
+
+    return actual_checkout_minutes - roster_end_minutes, roster_start_time, roster_end_time, actual_checkout_time
+
+
+def _validate_overtime_decision_for_final(day_payload, employee_obj, target_date, roster_day, overtime_lookup):
+    employee_label = employee_obj.worker_id or employee_obj.name or 'Employee'
+
+    for shift_key in ('morning', 'afternoon'):
+        potential_minutes, roster_start_time, roster_end_time, actual_checkout_time = _compute_potential_overtime_minutes(
+            day_payload,
+            roster_day,
+            shift_key,
+        )
+        if potential_minutes <= 0:
+            continue
+
+        decision = overtime_lookup.get((employee_obj.id, target_date.isoformat(), shift_key))
+        if decision is None or decision.status == 'pending':
+            raise ValidationError(
+                f'Overtime decision still pending for {employee_label} on {target_date.isoformat()} ({shift_key}).'
+            )
+
+        if (
+            decision.potential_ot_minutes != potential_minutes
+            or normalize_clock_time(decision.roster_start_time) != roster_start_time
+            or normalize_clock_time(decision.roster_end_time) != roster_end_time
+            or normalize_clock_time(decision.actual_checkout_time) != actual_checkout_time
+        ):
+            raise ValidationError(
+                f'Overtime decision is stale for {employee_label} on {target_date.isoformat()} ({shift_key}). Re-review overtime before final save.'
+            )
+
+        if decision.approved_ot_minutes + decision.denied_ot_minutes != potential_minutes:
+            raise ValidationError(
+                f'Overtime decision does not fully cover the potential overtime block for {employee_label} on {target_date.isoformat()} ({shift_key}).'
+            )
+
+
 def _coerce_status(value):
-    if value in ('present', 'absent', 'missing', 'off'):
+    if value in ('present', 'absent', 'missing', 'off', 'paid_rest', 'approved_leave', 'unapproved_leave'):
         return value
     return 'missing'
 
@@ -813,6 +1171,36 @@ def _save_attendance_payload(payload, status):
     except ValueError:
         raise ValidationError('Invalid year or month.')
 
+    matched_employees = []
+    for employee_payload in employees:
+        worker_id = str(employee_payload.get('worker_id') or employee_payload.get('employee_id') or '').strip()
+        employee_name = str(employee_payload.get('employee_name') or '').strip()
+        department = str(employee_payload.get('department') or '').strip()
+
+        employee_obj = _get_active_employee_by_identity(worker_id, employee_name)
+        if employee_obj is None:
+            continue
+
+        matched_employees.append(
+            {
+                'employee_obj': employee_obj,
+                'worker_id': worker_id,
+                'employee_name': employee_name,
+                'department': department,
+                'days': employee_payload.get('days') or {},
+            }
+        )
+
+    employee_ids = [row['employee_obj'].id for row in matched_employees]
+    leave_lookup = _build_leave_record_lookup(year, month, employee_ids)
+    paid_rest_lookup = _build_paid_rest_lookup(year, month, employee_ids)
+    overtime_lookup = _build_overtime_decision_lookup(year, month, employee_ids) if status == 'final' else {}
+
+    if status == 'final' and _has_pending_leave_records(year, month, employee_ids):
+        raise ValidationError('Leave decisions are still pending for this month.')
+    if status == 'final' and _has_pending_paid_rest_records(year, month, employee_ids):
+        raise ValidationError('Paid-rest decisions are still pending for this month.')
+
     with transaction.atomic():
         record, _ = AttendanceRecord.objects.update_or_create(
             year=year,
@@ -823,16 +1211,11 @@ def _save_attendance_payload(payload, status):
 
         record.employees.all().delete()
 
-        for employee_payload in employees:
-            worker_id = (
-                str(employee_payload.get('worker_id') or employee_payload.get('employee_id') or '').strip()
-            )
-            employee_name = str(employee_payload.get('employee_name') or '').strip()
-            department = str(employee_payload.get('department') or '').strip()
-
-            employee_obj = _get_active_employee_by_identity(worker_id, employee_name)
-            if employee_obj is None:
-                continue
+        for employee_row in matched_employees:
+            employee_obj = employee_row['employee_obj']
+            worker_id = employee_row['worker_id']
+            employee_name = employee_row['employee_name']
+            department = employee_row['department']
 
             assignment = _get_employee_roster_assignment(employee_obj)
             schedule_lookup = None
@@ -853,7 +1236,7 @@ def _save_attendance_payload(payload, status):
                 worker_id=worker_id,
             )
 
-            days = employee_payload.get('days') or {}
+            days = employee_row['days']
             for day_str, day_payload in days.items():
                 try:
                     day_index = int(day_str)
@@ -866,10 +1249,20 @@ def _save_attendance_payload(payload, status):
                     continue
 
                 roster_day = _resolve_assignment_roster_day(assignment, schedule_lookup, target_date)
-                normalized = _normalize_roster_off_day_payload(_extract_day_payload(day_payload or {}), roster_day)
+                normalized = _extract_day_payload(day_payload or {})
+                normalized = _overlay_leave_records_on_day_payload(
+                    normalized,
+                    leave_lookup.get((employee_obj.id, target_date.isoformat()), []),
+                )
+                normalized = _overlay_paid_rest_records_on_day_payload(
+                    normalized,
+                    paid_rest_lookup.get((employee_obj.id, target_date.isoformat()), []),
+                )
+                normalized = _normalize_roster_off_day_payload(normalized, roster_day)
                 employee_label = worker_id or employee_name or 'Employee'
                 if status == 'final':
                     _validate_shift_for_final(normalized, day_index, employee_label)
+                    _validate_overtime_decision_for_final(normalized, employee_obj, target_date, roster_day, overtime_lookup)
 
                 AttendanceShift.objects.create(
                     record_employee=record_employee,
@@ -890,9 +1283,9 @@ class AttendanceRecordsParseView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
-        file_obj = request.FILES.get('file')
-        if not file_obj:
-            return Response({'error': 'No file uploaded.'}, status=400)
+        uploaded_files = _get_uploaded_attendance_files(request)
+        if not uploaded_files:
+            return Response({'error': 'No files uploaded.'}, status=400)
 
         year = request.data.get('year')
         month = request.data.get('month')
@@ -903,14 +1296,79 @@ class AttendanceRecordsParseView(APIView):
         except ValueError:
             return Response({'error': 'Invalid month or year.'}, status=400)
 
-        try:
-            payload = _parse_attendance_sheet_records(file_obj, year=year, month=month)
-        except Exception as exc:
-            return Response({'error': f'Failed to parse attendance sheet: {exc}'}, status=400)
-        finally:
-            _cleanup_uploaded_file(file_obj)
+        merged_payload = None
+        warnings = []
+        source_files = []
 
-        return Response(payload)
+        for file_obj in uploaded_files:
+            file_name = getattr(file_obj, 'name', 'attendance-sheet')
+            try:
+                parsed_payload = _parse_attendance_sheet_records(file_obj, year=year, month=month)
+            except AttendanceSheetFormatError as exc:
+                warning_message = f'{file_name}: {exc}'
+                warnings.append(warning_message)
+                source_files.append({
+                    'name': file_name,
+                    'status': 'skipped',
+                    'employees_count': 0,
+                    'warning': warning_message,
+                })
+                continue
+            except Exception as exc:
+                warning_message = f'{file_name}: Failed to parse attendance sheet ({exc}).'
+                warnings.append(warning_message)
+                source_files.append({
+                    'name': file_name,
+                    'status': 'skipped',
+                    'employees_count': 0,
+                    'warning': warning_message,
+                })
+                continue
+            finally:
+                _cleanup_uploaded_file(file_obj)
+
+            if merged_payload is None:
+                merged_payload = parsed_payload
+            elif (
+                parsed_payload['year'] != merged_payload['year']
+                or parsed_payload['month'] != merged_payload['month']
+            ):
+                warning_message = (
+                    f"{file_name}: Skipped because it resolved to {parsed_payload['year']}-{parsed_payload['month']:02d}, "
+                    f"but the batch is already using {merged_payload['year']}-{merged_payload['month']:02d}."
+                )
+                warnings.append(warning_message)
+                source_files.append({
+                    'name': file_name,
+                    'status': 'skipped',
+                    'employees_count': 0,
+                    'warning': warning_message,
+                })
+                continue
+            else:
+                merged_payload = _merge_parsed_attendance_payloads(merged_payload, parsed_payload)
+
+            source_files.append({
+                'name': file_name,
+                'status': 'parsed',
+                'employees_count': len(parsed_payload.get('employees') or []),
+                'warning': None,
+            })
+
+        if merged_payload is None:
+            return Response(
+                {
+                    'error': 'No valid attendance files were parsed.',
+                    'warnings': warnings,
+                    'source_files': source_files,
+                },
+                status=400,
+            )
+
+        merged_payload['warnings'] = warnings
+        merged_payload['source_files'] = source_files
+
+        return Response(merged_payload)
 
 
 class AttendanceRecordsSaveView(APIView):
@@ -988,3 +1446,324 @@ class AttendanceRecordsHistoryView(APIView):
         return Response({
             'records': [_serialize_attendance_record_summary(record) for record in records],
         })
+
+
+def _parse_optional_year_month(query_params):
+    year = query_params.get('year')
+    month = query_params.get('month')
+    if year is None and month is None:
+        return None, None
+    if not year or not month:
+        raise ValidationError('year and month are required together.')
+
+    try:
+        return int(year), int(month)
+    except ValueError:
+        raise ValidationError('Invalid year or month.')
+
+
+def _get_request_user(request):
+    if getattr(request, 'user', None) and request.user.is_authenticated:
+        return request.user
+    return None
+
+
+def _stamp_leave_record_status(leave_record, request, status_value):
+    user = _get_request_user(request)
+    now = timezone.now()
+
+    if status_value == 'approved':
+        leave_targets = set(_determine_leave_shift_targets(leave_record))
+        overlapping_paid_rest = EmployeePaidRestRequest.objects.filter(
+            employee=leave_record.employee,
+            rest_date=leave_record.leave_date,
+            submission_status='approved',
+        )
+        for paid_rest_request in overlapping_paid_rest:
+            if leave_targets.intersection(_determine_paid_rest_shift_targets(paid_rest_request)):
+                raise ValidationError('Approved leave overlaps an approved paid-rest request for the same shift.')
+
+    leave_record.submission_status = status_value
+    if status_value != 'draft':
+        if leave_record.submitted_at is None:
+            leave_record.submitted_at = now
+        if leave_record.submitted_by is None and user is not None:
+            leave_record.submitted_by = user
+
+    if status_value in ('approved', 'rejected', 'recorded_unapproved'):
+        leave_record.decision_at = now
+        if user is not None:
+            leave_record.decision_by = user
+    elif status_value in ('draft', 'submitted'):
+        leave_record.decision_at = None
+        leave_record.decision_by = None
+
+
+def _stamp_overtime_decision_status(decision, request):
+    user = _get_request_user(request)
+    if decision.status == 'pending':
+        decision.resolved_at = None
+        decision.resolved_by = None
+        return
+
+    decision.resolved_at = timezone.now()
+    if user is not None:
+        decision.resolved_by = user
+
+
+class PayrollLeaveRecordsView(APIView):
+    def get(self, request):
+        try:
+            year, month = _parse_optional_year_month(request.query_params)
+        except ValidationError as exc:
+            return Response({'error': exc.detail}, status=400)
+
+        queryset = EmployeeLeaveRecord.objects.select_related('employee', 'submitted_by', 'decision_by')
+        if year is not None and month is not None:
+            queryset = queryset.filter(leave_date__year=year, leave_date__month=month)
+
+        employee_id = request.query_params.get('employee_id')
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+
+        serializer = EmployeeLeaveRecordSerializer(queryset.order_by('leave_date', 'employee_id', 'id'), many=True)
+        return Response({'records': serializer.data})
+
+    def post(self, request):
+        serializer = EmployeeLeaveRecordSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+
+        leave_record = serializer.save()
+        _stamp_leave_record_status(
+            leave_record,
+            request,
+            serializer.validated_data.get('submission_status', leave_record.submission_status),
+        )
+        leave_record.save()
+
+        return Response(EmployeeLeaveRecordSerializer(leave_record).data, status=201)
+
+
+class PayrollLeaveRecordDetailView(APIView):
+    def patch(self, request, pk):
+        leave_record = EmployeeLeaveRecord.objects.filter(pk=pk).first()
+        if leave_record is None:
+            return Response({'error': 'Leave record not found.'}, status=404)
+
+        serializer = EmployeeLeaveRecordSerializer(leave_record, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+
+        leave_record = serializer.save()
+        if 'submission_status' in serializer.validated_data:
+            _stamp_leave_record_status(leave_record, request, serializer.validated_data['submission_status'])
+            leave_record.save()
+
+        return Response(EmployeeLeaveRecordSerializer(leave_record).data)
+
+
+class PayrollLeaveRecordSubmitView(APIView):
+    def post(self, request, pk):
+        leave_record = EmployeeLeaveRecord.objects.filter(pk=pk).first()
+        if leave_record is None:
+            return Response({'error': 'Leave record not found.'}, status=404)
+
+        _stamp_leave_record_status(leave_record, request, 'submitted')
+        leave_record.save()
+        return Response(EmployeeLeaveRecordSerializer(leave_record).data)
+
+
+class PayrollLeaveRecordApproveView(APIView):
+    def post(self, request, pk):
+        leave_record = EmployeeLeaveRecord.objects.filter(pk=pk).first()
+        if leave_record is None:
+            return Response({'error': 'Leave record not found.'}, status=404)
+
+        manager_note = request.data.get('manager_note')
+        if manager_note is not None:
+            leave_record.manager_note = str(manager_note).strip()
+
+        _stamp_leave_record_status(leave_record, request, 'approved')
+        leave_record.save()
+        return Response(EmployeeLeaveRecordSerializer(leave_record).data)
+
+
+class PayrollLeaveRecordRejectView(APIView):
+    def post(self, request, pk):
+        leave_record = EmployeeLeaveRecord.objects.filter(pk=pk).first()
+        if leave_record is None:
+            return Response({'error': 'Leave record not found.'}, status=404)
+
+        manager_note = request.data.get('manager_note')
+        if manager_note is not None:
+            leave_record.manager_note = str(manager_note).strip()
+
+        _stamp_leave_record_status(leave_record, request, 'rejected')
+        leave_record.save()
+        return Response(EmployeeLeaveRecordSerializer(leave_record).data)
+
+
+class PayrollLeaveRecordRecordUnapprovedView(APIView):
+    def post(self, request, pk):
+        leave_record = EmployeeLeaveRecord.objects.filter(pk=pk).first()
+        if leave_record is None:
+            return Response({'error': 'Leave record not found.'}, status=404)
+
+        manager_note = request.data.get('manager_note')
+        if manager_note is not None:
+            leave_record.manager_note = str(manager_note).strip()
+
+        _stamp_leave_record_status(leave_record, request, 'recorded_unapproved')
+        leave_record.save()
+        return Response(EmployeeLeaveRecordSerializer(leave_record).data)
+
+
+class PayrollOvertimeDecisionsView(APIView):
+    def get(self, request):
+        try:
+            year, month = _parse_optional_year_month(request.query_params)
+        except ValidationError as exc:
+            return Response({'error': exc.detail}, status=400)
+
+        queryset = AttendanceOvertimeDecision.objects.select_related('employee', 'resolved_by').prefetch_related('segments')
+        if year is not None and month is not None:
+            queryset = queryset.filter(attendance_date__year=year, attendance_date__month=month)
+
+        employee_id = request.query_params.get('employee_id')
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+
+        serializer = AttendanceOvertimeDecisionSerializer(queryset.order_by('attendance_date', 'employee_id', 'attendance_shift'), many=True)
+        return Response({'records': serializer.data})
+
+    def post(self, request):
+        instance = None
+        decision_id = request.data.get('id')
+        if decision_id:
+            instance = AttendanceOvertimeDecision.objects.filter(pk=decision_id).first()
+
+        if instance is None:
+            employee_id = request.data.get('employee')
+            attendance_date = request.data.get('attendance_date')
+            attendance_shift = request.data.get('attendance_shift')
+            if employee_id and attendance_date and attendance_shift:
+                instance = AttendanceOvertimeDecision.objects.filter(
+                    employee_id=employee_id,
+                    attendance_date=attendance_date,
+                    attendance_shift=attendance_shift,
+                ).first()
+
+        serializer = AttendanceOvertimeDecisionSerializer(instance, data=request.data, partial=bool(instance))
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+
+        decision = serializer.save()
+        _stamp_overtime_decision_status(decision, request)
+        decision.save()
+
+        return Response(
+            AttendanceOvertimeDecisionSerializer(decision).data,
+            status=200 if instance is not None else 201,
+        )
+
+
+class PayrollOvertimeDecisionDetailView(APIView):
+    def patch(self, request, pk):
+        decision = AttendanceOvertimeDecision.objects.filter(pk=pk).first()
+        if decision is None:
+            return Response({'error': 'Overtime decision not found.'}, status=404)
+
+        serializer = AttendanceOvertimeDecisionSerializer(decision, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+
+        decision = serializer.save()
+        _stamp_overtime_decision_status(decision, request)
+        decision.save()
+        return Response(AttendanceOvertimeDecisionSerializer(decision).data)
+
+
+class PayrollAttendanceResolutionsView(PayrollOvertimeDecisionsView):
+    pass
+
+
+class PayrollAttendanceResolutionDetailView(PayrollOvertimeDecisionDetailView):
+    pass
+
+
+class PayrollAttendanceResolutionApproveView(APIView):
+    def post(self, request, pk):
+        decision = AttendanceOvertimeDecision.objects.filter(pk=pk).first()
+        if decision is None:
+            return Response({'error': 'Attendance resolution not found.'}, status=404)
+
+        serializer = AttendanceOvertimeDecisionSerializer(
+            decision,
+            data={
+                'status': 'approved',
+                'decision_reason': str(request.data.get('decision_reason', '') or '').strip(),
+                'narrowed_decision_enabled': False,
+            },
+            partial=True,
+        )
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+
+        decision = serializer.save()
+        _stamp_overtime_decision_status(decision, request)
+        decision.save()
+        return Response(AttendanceOvertimeDecisionSerializer(decision).data)
+
+
+class PayrollAttendanceResolutionDenyView(APIView):
+    def post(self, request, pk):
+        decision = AttendanceOvertimeDecision.objects.filter(pk=pk).first()
+        if decision is None:
+            return Response({'error': 'Attendance resolution not found.'}, status=404)
+
+        serializer = AttendanceOvertimeDecisionSerializer(
+            decision,
+            data={
+                'status': 'denied',
+                'decision_reason': str(request.data.get('decision_reason', '') or '').strip(),
+                'narrowed_decision_enabled': False,
+            },
+            partial=True,
+        )
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+
+        decision = serializer.save()
+        _stamp_overtime_decision_status(decision, request)
+        decision.save()
+        return Response(AttendanceOvertimeDecisionSerializer(decision).data)
+
+
+class PayrollAttendanceResolutionPartialApproveView(APIView):
+    def post(self, request, pk):
+        decision = AttendanceOvertimeDecision.objects.filter(pk=pk).first()
+        if decision is None:
+            return Response({'error': 'Attendance resolution not found.'}, status=404)
+
+        segments = request.data.get('segments') or []
+        if not segments:
+            return Response({'error': {'segments': 'Partially approved overtime requires approved and denied segments.'}}, status=400)
+
+        serializer = AttendanceOvertimeDecisionSerializer(
+            decision,
+            data={
+                'status': 'partially_approved',
+                'decision_reason': str(request.data.get('decision_reason', '') or '').strip(),
+                'narrowed_decision_enabled': True,
+                'segments': segments,
+            },
+            partial=True,
+        )
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+
+        decision = serializer.save()
+        _stamp_overtime_decision_status(decision, request)
+        decision.save()
+        return Response(AttendanceOvertimeDecisionSerializer(decision).data)

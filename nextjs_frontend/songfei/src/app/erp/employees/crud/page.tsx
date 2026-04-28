@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import {
   startTransition,
   type FormEvent,
@@ -24,11 +25,22 @@ interface EmployeeRosterAssignment {
   summary_lines: string[];
 }
 
+interface Department {
+  id: number;
+  name: string;
+  code?: string | null;
+  is_active: boolean;
+  shop_paid_rest_enabled: boolean;
+}
+
 interface Employee {
   id: number;
   name: string;
   base_salary: number;
   worker_id: string | null;
+  department?: number | null;
+  department_name?: string | null;
+  department_shop_paid_rest_enabled?: boolean;
   is_active: boolean;
   roster_assignment?: EmployeeRosterAssignment | null;
 }
@@ -60,13 +72,21 @@ interface NewEmployeeState {
   name: string;
   salary: string;
   workerId: string;
+  departmentId: string;
 }
 
 interface EmployeeFormState {
   name: string;
   salary: string;
   workerId: string;
+  departmentId: string;
   isActive: boolean;
+}
+
+interface EmployeeRequiredFields {
+  name: string;
+  salary: string;
+  workerId: string;
 }
 
 interface ShiftTimes {
@@ -121,6 +141,7 @@ interface RosterDayCardProps {
 }
 
 const EMPLOYEE_API = 'http://localhost:8000/api/employees/';
+const DEPARTMENT_API = 'http://localhost:8000/api/departments/';
 const ROSTER_TEMPLATE_API = 'http://localhost:8000/api/roster-templates/';
 const WEEKDAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
@@ -188,6 +209,7 @@ const adjustTimeByMinutes = (value: string, delta: number) => {
 };
 
 const formatShiftPreview = (value: string) => normalizeTimeValue(value) || '--:--';
+const REQUIRED_FIELD_SUFFIX = ' *';
 
 const cloneDefaultTimes = (): ShiftTimes => ({ ...DEFAULT_SHIFT_TIMES });
 
@@ -210,6 +232,15 @@ const sortEmployees = (employees: Employee[]) => {
 
 const sortRosterTemplates = (templates: RosterTemplate[]) => {
   return [...templates].sort((left, right) => left.name.localeCompare(right.name));
+};
+
+const sortDepartments = (departments: Department[]) => {
+  return [...departments].sort((left, right) => {
+    if (left.is_active !== right.is_active) {
+      return left.is_active ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name);
+  });
 };
 
 const buildBlankSchedule = (cycleLengthWeeks: number, defaultTimes = cloneDefaultTimes()) => {
@@ -343,10 +374,35 @@ const createEditorState = (employee: Employee): EmployeeEditorState => ({
     name: employee.name,
     salary: String(employee.base_salary),
     workerId: employee.worker_id || '',
+    departmentId: employee.department ? String(employee.department) : '',
     isActive: employee.is_active,
   },
   builder: buildPresetBuilder('standard', employee.name),
 });
+
+const getRequiredFieldWarnings = (fields: EmployeeRequiredFields) => {
+  const warnings: string[] = [];
+  const trimmedName = fields.name.trim();
+  const trimmedWorkerId = fields.workerId.trim();
+  const salaryText = String(fields.salary || '').trim();
+  const parsedSalary = Number.parseFloat(salaryText);
+
+  if (!trimmedName) {
+    warnings.push('Employee Name is required.');
+  }
+
+  if (!salaryText) {
+    warnings.push('Base Salary is required.');
+  } else if (Number.isNaN(parsedSalary) || parsedSalary <= 0) {
+    warnings.push('Base Salary must be greater than 0.');
+  }
+
+  if (!trimmedWorkerId) {
+    warnings.push('Worker ID is required.');
+  }
+
+  return warnings;
+};
 
 const formatRosterDaySummary = (day: RosterDay) => {
   if (!day.is_working) {
@@ -475,8 +531,9 @@ function RosterDayCard({
 
 export default function EmployeeCrudPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [rosterTemplates, setRosterTemplates] = useState<RosterTemplate[]>([]);
-  const [newEmployee, setNewEmployee] = useState<NewEmployeeState>({ name: '', salary: '', workerId: '' });
+  const [newEmployee, setNewEmployee] = useState<NewEmployeeState>({ name: '', salary: '', workerId: '', departmentId: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
@@ -504,6 +561,7 @@ export default function EmployeeCrudPage() {
       const fields = [
         employee.name,
         employee.worker_id || '',
+        employee.department_name || '',
         employee.is_active ? 'active' : 'inactive',
         String(employee.id),
       ];
@@ -512,16 +570,31 @@ export default function EmployeeCrudPage() {
   }, [deferredSearchTerm, employees]);
 
   const activeCount = useMemo(() => employees.filter((employee) => employee.is_active).length, [employees]);
+  const departmentAssignedCount = useMemo(
+    () => employees.filter((employee) => Boolean(employee.department)).length,
+    [employees],
+  );
+  const missingWorkerIdCount = useMemo(
+    () => employees.filter((employee) => !(employee.worker_id || '').trim()).length,
+    [employees],
+  );
+  const newEmployeeWarnings = useMemo(() => getRequiredFieldWarnings(newEmployee), [newEmployee]);
+  const activeEditorWarnings = useMemo(
+    () => (activeEditor ? getRequiredFieldWarnings(activeEditor.form) : []),
+    [activeEditor],
+  );
 
   const bootstrapPage = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [employeesResponse, templatesResponse] = await Promise.all([
+      const [employeesResponse, templatesResponse, departmentsResponse] = await Promise.all([
         fetch(EMPLOYEE_API),
         fetch(ROSTER_TEMPLATE_API),
+        fetch(DEPARTMENT_API),
       ]);
       const employeesData = await employeesResponse.json();
       const templatesData = await templatesResponse.json();
+      const departmentsData = await departmentsResponse.json();
 
       if (!employeesResponse.ok) {
         throw new Error(extractApiError(employeesData, 'Failed to fetch employees.'));
@@ -529,10 +602,14 @@ export default function EmployeeCrudPage() {
       if (!templatesResponse.ok) {
         throw new Error(extractApiError(templatesData, 'Failed to fetch roster templates.'));
       }
+      if (!departmentsResponse.ok) {
+        throw new Error(extractApiError(departmentsData, 'Failed to fetch departments.'));
+      }
 
       startTransition(() => {
         setEmployees(sortEmployees(employeesData as Employee[]));
         setRosterTemplates(sortRosterTemplates(templatesData as RosterTemplate[]));
+        setDepartments(sortDepartments(departmentsData as Department[]));
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load employee directory.';
@@ -568,6 +645,7 @@ export default function EmployeeCrudPage() {
             name: updatedEmployee.name,
             salary: String(updatedEmployee.base_salary),
             workerId: updatedEmployee.worker_id || '',
+            departmentId: updatedEmployee.department ? String(updatedEmployee.department) : '',
             isActive: updatedEmployee.is_active,
           },
           selectedTemplateId: updatedEmployee.roster_assignment?.template_id ?? previous.selectedTemplateId,
@@ -581,12 +659,15 @@ export default function EmployeeCrudPage() {
   const createEmployee = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const trimmedName = newEmployee.name.trim();
-    const parsedSalary = Number.parseFloat(newEmployee.salary);
-    if (!trimmedName || Number.isNaN(parsedSalary)) {
-      showErrorPopup('Enter a valid employee name and base salary.');
+    if (newEmployeeWarnings.length > 0) {
+      showErrorPopup(newEmployeeWarnings.join(' '));
       return;
     }
+
+    const trimmedName = newEmployee.name.trim();
+    const trimmedWorkerId = newEmployee.workerId.trim();
+    const parsedSalary = Number.parseFloat(newEmployee.salary);
+    const departmentId = newEmployee.departmentId ? Number.parseInt(newEmployee.departmentId, 10) : null;
 
     try {
       setIsCreatingEmployee(true);
@@ -596,7 +677,8 @@ export default function EmployeeCrudPage() {
         body: JSON.stringify({
           name: trimmedName,
           base_salary: parsedSalary,
-          worker_id: newEmployee.workerId.trim() || null,
+          worker_id: trimmedWorkerId,
+          department: departmentId,
           is_active: true,
         }),
       });
@@ -610,7 +692,7 @@ export default function EmployeeCrudPage() {
       startTransition(() => {
         setEmployees((previous) => sortEmployees([...previous, data as Employee]));
       });
-      setNewEmployee({ name: '', salary: '', workerId: '' });
+      setNewEmployee({ name: '', salary: '', workerId: '', departmentId: '' });
     } catch {
       showErrorPopup('Failed to create employee.');
     } finally {
@@ -636,11 +718,14 @@ export default function EmployeeCrudPage() {
       return;
     }
 
-    const parsedSalary = Number.parseFloat(activeEditor.form.salary);
-    if (!activeEditor.form.name.trim() || Number.isNaN(parsedSalary)) {
-      showErrorPopup('Enter a valid name and base salary before saving.');
+    if (activeEditorWarnings.length > 0) {
+      showErrorPopup(activeEditorWarnings.join(' '));
       return;
     }
+
+    const parsedSalary = Number.parseFloat(activeEditor.form.salary);
+    const trimmedWorkerId = activeEditor.form.workerId.trim();
+    const departmentId = activeEditor.form.departmentId ? Number.parseInt(activeEditor.form.departmentId, 10) : null;
 
     try {
       setIsSavingEmployee(true);
@@ -650,7 +735,8 @@ export default function EmployeeCrudPage() {
         body: JSON.stringify({
           name: activeEditor.form.name.trim(),
           base_salary: parsedSalary,
-          worker_id: activeEditor.form.workerId.trim() || null,
+          worker_id: trimmedWorkerId || null,
+          department: departmentId,
           is_active: activeEditor.form.isActive,
         }),
       });
@@ -834,7 +920,7 @@ export default function EmployeeCrudPage() {
       <div className="kicker">Employee Records</div>
       <h1 className="hero-title" style={{ fontSize: 'clamp(2rem, 4vw, 3rem)' }}>Edit people once, keep payroll aligned.</h1>
       <p className="hero-copy">
-        Attendance matching now depends on both the machine worker ID and the employee name, so this directory doubles as the control room for identity, status, and reusable shift rosters.
+        Attendance matching now keys off the machine worker ID, so this directory is the control room for payroll identity, active status, and reusable shift rosters.
       </p>
 
       <div className="grid-2" style={{ marginTop: '2rem' }}>
@@ -842,7 +928,7 @@ export default function EmployeeCrudPage() {
           <h2 className="section-title">Add New Employee</h2>
           <form onSubmit={createEmployee} className="form-grid" style={{ marginTop: '1.2rem' }}>
             <div className="form-field">
-              <label>Name</label>
+              <label>Employee Name{REQUIRED_FIELD_SUFFIX}</label>
               <input
                 type="text"
                 value={newEmployee.name}
@@ -853,9 +939,10 @@ export default function EmployeeCrudPage() {
               />
             </div>
             <div className="form-field">
-              <label>Base Salary (Kip)</label>
+              <label>Base Salary (Kip){REQUIRED_FIELD_SUFFIX}</label>
               <input
                 type="number"
+                min="0.01"
                 step="0.01"
                 value={newEmployee.salary}
                 onChange={(event) => setNewEmployee((previous) => ({ ...previous, salary: event.target.value }))}
@@ -865,19 +952,64 @@ export default function EmployeeCrudPage() {
               />
             </div>
             <div className="form-field">
-              <label>Worker ID</label>
+              <label>Worker ID{REQUIRED_FIELD_SUFFIX}</label>
               <input
                 type="text"
                 value={newEmployee.workerId}
                 onChange={(event) => setNewEmployee((previous) => ({ ...previous, workerId: event.target.value }))}
                 className="input"
                 placeholder="Machine employee ID / 工号"
+                required
               />
             </div>
+            <div className="form-field">
+              <label>Department</label>
+              <select
+                className="select"
+                value={newEmployee.departmentId}
+                onChange={(event) => setNewEmployee((previous) => ({ ...previous, departmentId: event.target.value }))}
+              >
+                <option value="">Leave blank for now</option>
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                    {department.shop_paid_rest_enabled ? ' · paid rest enabled' : ''}
+                    {!department.is_active ? ' · inactive' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
             <p className="muted">
-              Keep the name and worker ID aligned with the fingerprint export. The system now treats that pair as the attendance identity.
+              Fields marked with * are compulsory. Attendance identity uses Worker ID + Employee Name together because worker IDs can overlap across different machines, and that combination must be unique in the employee directory.
             </p>
-            <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }} disabled={isCreatingEmployee}>
+            <p className="muted" style={{ marginTop: '-0.2rem' }}>
+              Department is optional in this rollout, but assigning one is what enables department-based shop paid rest later.
+            </p>
+            {newEmployeeWarnings.length > 0 ? (
+              <p className="muted" style={{ color: '#f7b07f', marginTop: '-0.2rem' }}>
+                {newEmployeeWarnings.join(' ')}
+              </p>
+            ) : null}
+            <div className="employee-note-panel">
+              <div className="payroll-time-label">Payroll allowances are configured in Salary Studio</div>
+              <p className="muted" style={{ marginTop: '0.45rem' }}>
+                Rice allowance is set in Payroll Policies because it is a shared rule. Social security amount and trial-worker eligibility are set in Compensation Profiles.
+              </p>
+              <div className="employee-modal-actions" style={{ marginTop: '1rem' }}>
+                <Link href="/erp/employees/departments" className="btn btn-outline">
+                  Manage Departments
+                </Link>
+                <Link href="/erp/salary?view=adjustments" className="btn btn-outline">
+                  Open Payroll Policies & Compensation
+                </Link>
+              </div>
+            </div>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ justifyContent: 'center' }}
+              disabled={isCreatingEmployee || newEmployeeWarnings.length > 0}
+            >
               {isCreatingEmployee ? 'Adding Employee...' : 'Add Employee'}
             </button>
           </form>
@@ -892,7 +1024,7 @@ export default function EmployeeCrudPage() {
                 type="text"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search by ID, name, worker ID, or status"
+                placeholder="Search by ID, name, worker ID, department, or status"
                 className="input"
               />
             </div>
@@ -911,7 +1043,16 @@ export default function EmployeeCrudPage() {
               <span className="stat-value">{rosterTemplates.length}</span>
               <span className="stat-label">Saved Rosters</span>
             </div>
+            <div className="stat">
+              <span className="stat-value">{departmentAssignedCount}</span>
+              <span className="stat-label">With Departments</span>
+            </div>
           </div>
+          {missingWorkerIdCount > 0 ? (
+            <p className="muted" style={{ marginTop: '1rem' }}>
+              {missingWorkerIdCount} employee record{missingWorkerIdCount === 1 ? '' : 's'} still need a worker ID before attendance import and payroll generation.
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -931,6 +1072,8 @@ export default function EmployeeCrudPage() {
                 <tr>
                   <th>ID</th>
                   <th>Name</th>
+                  <th>Worker ID</th>
+                  <th>Department</th>
                   <th>Salary</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -941,6 +1084,8 @@ export default function EmployeeCrudPage() {
                   <tr key={employee.id} className={index % 2 === 0 ? 'table-row-highlight' : ''}>
                     <td>{employee.id}</td>
                     <td>{employee.name}</td>
+                    <td>{employee.worker_id || 'Missing'}</td>
+                    <td>{employee.department_name || 'Unassigned'}</td>
                     <td>{numberFormatter.format(employee.base_salary)}</td>
                     <td>
                       <span className="pill" style={{ color: employee.is_active ? '#9cf0b9' : '#f7b07f' }}>
@@ -968,7 +1113,7 @@ export default function EmployeeCrudPage() {
                 <div className="kicker">Employee Editor</div>
                 <h2 className="section-title" style={{ marginBottom: 0 }}>{activeEmployee.name}</h2>
                 <p className="muted" style={{ marginTop: '0.45rem' }}>
-                  ERP ID {activeEmployee.id} · Worker ID {activeEmployee.worker_id || 'Not set'}
+                  Internal ERP ID {activeEmployee.id} · Worker ID {activeEmployee.worker_id || 'Required'} · Department {activeEmployee.department_name || 'Unassigned'}
                 </p>
               </div>
               <button type="button" className="btn btn-ghost" onClick={() => setActiveEditor(null)}>Close</button>
@@ -994,11 +1139,7 @@ export default function EmployeeCrudPage() {
             {activeEditor.activeTab === 'details' ? (
               <div className="employee-editor-grid">
                 <div className="form-field">
-                  <label>Internal ERP ID</label>
-                  <input type="text" className="input" value={String(activeEmployee.id)} readOnly />
-                </div>
-                <div className="form-field">
-                  <label>Employee Name</label>
+                  <label>Employee Name{REQUIRED_FIELD_SUFFIX}</label>
                   <input
                     type="text"
                     className="input"
@@ -1010,7 +1151,7 @@ export default function EmployeeCrudPage() {
                   />
                 </div>
                 <div className="form-field">
-                  <label>Worker ID</label>
+                  <label>Worker ID{REQUIRED_FIELD_SUFFIX}</label>
                   <input
                     type="text"
                     className="input"
@@ -1022,9 +1163,10 @@ export default function EmployeeCrudPage() {
                   />
                 </div>
                 <div className="form-field">
-                  <label>Base Salary (Kip)</label>
+                  <label>Base Salary (Kip){REQUIRED_FIELD_SUFFIX}</label>
                   <input
                     type="number"
+                    min="0.01"
                     step="0.01"
                     className="input"
                     value={activeEditor.form.salary}
@@ -1033,6 +1175,34 @@ export default function EmployeeCrudPage() {
                       form: { ...previous.form, salary: event.target.value },
                     }))}
                   />
+                </div>
+
+                <div className="form-field">
+                  <label>Department</label>
+                  <select
+                    className="select"
+                    value={activeEditor.form.departmentId}
+                    onChange={(event) => updateEditor((previous) => ({
+                      ...previous,
+                      form: { ...previous.form, departmentId: event.target.value },
+                    }))}
+                  >
+                    <option value="">Leave blank for now</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                        {department.shop_paid_rest_enabled ? ' · paid rest enabled' : ''}
+                        {!department.is_active ? ' · inactive' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="employee-note-panel">
+                  <div className="payroll-time-label">Internal ERP ID</div>
+                  <p className="muted" style={{ marginTop: '0.45rem' }}>
+                    {activeEmployee.id} is system-generated and cannot be edited from the frontend.
+                  </p>
                 </div>
 
                 <div className="employee-status-panel">
@@ -1069,12 +1239,47 @@ export default function EmployeeCrudPage() {
                 <div className="employee-note-panel">
                   <div className="payroll-time-label">Attendance Identity</div>
                   <p className="muted" style={{ marginTop: '0.45rem' }}>
-                    Keep the employee name and worker ID in sync with the fingerprint export. The parser now uses that exact pair to decide which attendance rows belong to this employee.
+                    Attendance matching uses Worker ID + Employee Name together. Worker ID alone is not enough when different machines reuse the same ID range, so the Worker ID + Employee Name combination must stay unique.
                   </p>
                 </div>
 
+                <div className="employee-note-panel">
+                  <div className="payroll-time-label">Department and shop paid rest</div>
+                  <p className="muted" style={{ marginTop: '0.45rem' }}>
+                    Department is optional right now, but shop paid-rest eligibility and coverage rules only apply after the employee is assigned to a department with paid rest enabled.
+                  </p>
+                  <div className="employee-modal-actions" style={{ marginTop: '1rem' }}>
+                    <Link href="/erp/employees/departments" className="btn btn-outline">
+                      Open Departments
+                    </Link>
+                  </div>
+                </div>
+
+                <div className="employee-note-panel">
+                  <div className="payroll-time-label">Rice allowance and social security</div>
+                  <p className="muted" style={{ marginTop: '0.45rem' }}>
+                    Rice allowance is configured in Payroll Policies. Social security amount and trial-worker eligibility are configured in Compensation Profiles.
+                  </p>
+                  <div className="employee-modal-actions" style={{ marginTop: '1rem' }}>
+                    <Link href="/erp/salary?view=adjustments" className="btn btn-outline">
+                      Open Payroll Policies & Compensation
+                    </Link>
+                  </div>
+                </div>
+
+                {activeEditorWarnings.length > 0 ? (
+                  <p className="muted" style={{ color: '#f7b07f', margin: 0 }}>
+                    {activeEditorWarnings.join(' ')}
+                  </p>
+                ) : null}
+
                 <div className="employee-modal-actions">
-                  <button type="button" className="btn btn-primary" onClick={saveEmployeeDetails} disabled={isSavingEmployee}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={saveEmployeeDetails}
+                    disabled={isSavingEmployee || activeEditorWarnings.length > 0}
+                  >
                     {isSavingEmployee ? 'Saving Changes...' : 'Save Details'}
                   </button>
                 </div>
@@ -1184,6 +1389,9 @@ export default function EmployeeCrudPage() {
                           <div className="payroll-time-label">Preset Patterns</div>
                           <p className="muted" style={{ marginTop: '0.45rem' }}>
                             Start from a common pattern, then fine-tune the days that differ.
+                          </p>
+                          <p className="muted" style={{ marginTop: '0.45rem' }}>
+                            For shop teams using floating paid rest, the All Week preset is the recommended base roster. Actual days off should come from approved paid-rest requests, not from the repeating roster itself.
                           </p>
                         </div>
                         <div className="roster-preset-strip">

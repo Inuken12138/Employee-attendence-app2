@@ -21,11 +21,17 @@ export default function ErpLayout({ children }: { children: ReactNode }) {
               Employees
             </div>
             <div className="sidebar-group">
+              <Link className="sidebar-link" href="/erp/employees/departments">
+                Departments <span className="muted">↗</span>
+              </Link>
               <Link className="sidebar-link" href="/erp/employees/crud">
                 Employee Records <span className="muted">↗</span>
               </Link>
               <Link className="sidebar-link" href="/erp/employees/payroll">
                 Payroll Ops <span className="muted">↗</span>
+              </Link>
+              <Link className="sidebar-link" href="/erp/salary">
+                Salary Studio <span className="muted">↗</span>
               </Link>
             </div>
           </div>
