@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /p/[slug] route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
@@ -37,6 +43,7 @@ interface Review {
   user_username: string;
 }
 
+/** Renders the product detail page. */
 export default function ProductDetailPage() {
   const params = useParams();
   const slug = params.slug as string;

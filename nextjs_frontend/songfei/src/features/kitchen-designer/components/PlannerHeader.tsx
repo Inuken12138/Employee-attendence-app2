@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Reusable kitchen designer UI component.
+ *
+ * These components support the planner flow with review widgets, subheaders, drawers, and guided controls.
+ */
+
 import type { PlannerStage } from '../types/planner';
 
 const stageDefinitions: Array<{ stage: PlannerStage; label: string; caption: string }> = [
@@ -26,6 +32,7 @@ interface PlannerHeaderProps {
   canSelectStage: (stage: PlannerStage) => boolean;
 }
 
+/** Renders the planner header component used by this module. */
 export default function PlannerHeader({ stage, onSelectStage, canSelectStage }: PlannerHeaderProps) {
   const activeIndex = stageDefinitions.findIndex((item) => item.stage === stage);
 

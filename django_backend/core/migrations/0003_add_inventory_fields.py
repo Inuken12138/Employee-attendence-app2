@@ -1,3 +1,5 @@
+"""Add extra inventory fields used by the ERP stock-management UI."""
+
 from django.db import migrations, models
 
 

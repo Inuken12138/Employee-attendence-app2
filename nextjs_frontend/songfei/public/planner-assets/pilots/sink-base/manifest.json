@@ -1,0 +1,85 @@
+{
+  "pilot": "sink-base",
+  "version": 1,
+  "basePath": "/planner-assets/pilots/sink-base",
+  "namingConvention": "{PRODUCT_CODE}.glb",
+  "assets": [
+    {
+      "slotKey": "frame",
+      "productCode": "FRAME-BASE-SINK-600",
+      "fileName": "FRAME-BASE-SINK-600.glb",
+      "description": "Base sink cabinet frame or carcass",
+      "notes": "Origin centered on cabinet footprint; keep global scale in meters"
+    },
+    {
+      "slotKey": "countertop",
+      "productCode": "COUNTERTOP-BLANK-600",
+      "fileName": "COUNTERTOP-BLANK-600.glb",
+      "description": "Blank countertop with no sink cutout",
+      "notes": "Share the same footprint and anchor position as all countertop variants"
+    },
+    {
+      "slotKey": "countertop",
+      "productCode": "COUNTERTOP-ROUND-CUTOUT-600",
+      "fileName": "COUNTERTOP-ROUND-CUTOUT-600.glb",
+      "description": "Countertop variant for round sink cutout",
+      "notes": "Must align exactly with the blank countertop"
+    },
+    {
+      "slotKey": "countertop",
+      "productCode": "COUNTERTOP-SQUARE-CUTOUT-600",
+      "fileName": "COUNTERTOP-SQUARE-CUTOUT-600.glb",
+      "description": "Countertop variant for square sink cutout",
+      "notes": "Must align exactly with the blank countertop"
+    },
+    {
+      "slotKey": "front",
+      "productCode": "DOOR-FRONT-600-WHITE",
+      "fileName": "DOOR-FRONT-600-WHITE.glb",
+      "description": "White sink-base door or front",
+      "notes": "Door origin should sit on the hinge axis"
+    },
+    {
+      "slotKey": "front",
+      "productCode": "DOOR-FRONT-600-OAK",
+      "fileName": "DOOR-FRONT-600-OAK.glb",
+      "description": "Oak sink-base door or front",
+      "notes": "Door origin should sit on the hinge axis"
+    },
+    {
+      "slotKey": "handle",
+      "productCode": "HANDLE-BAR-BLACK-160",
+      "fileName": "HANDLE-BAR-BLACK-160.glb",
+      "description": "Black bar handle",
+      "notes": "Keep attachment pivot aligned to the front panel"
+    },
+    {
+      "slotKey": "sink",
+      "productCode": "SINK-ROUND-450",
+      "fileName": "SINK-ROUND-450.glb",
+      "description": "Round sink bowl",
+      "notes": "Align to the round cutout reference position"
+    },
+    {
+      "slotKey": "sink",
+      "productCode": "SINK-SQUARE-450",
+      "fileName": "SINK-SQUARE-450.glb",
+      "description": "Square sink bowl",
+      "notes": "Align to the square cutout reference position"
+    },
+    {
+      "slotKey": "faucet",
+      "productCode": "FAUCET-LEFT-BRUSHED",
+      "fileName": "FAUCET-LEFT-BRUSHED.glb",
+      "description": "Left-offset brushed faucet",
+      "notes": "Origin at countertop mount point"
+    },
+    {
+      "slotKey": "faucet",
+      "productCode": "FAUCET-RIGHT-BRUSHED",
+      "fileName": "FAUCET-RIGHT-BRUSHED.glb",
+      "description": "Right-offset brushed faucet",
+      "notes": "Origin at countertop mount point"
+    }
+  ]
+}

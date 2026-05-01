@@ -1,6 +1,14 @@
+/**
+ * Renders the storefront landing page.
+ *
+ * This is the public entry point for the shopping experience. It introduces the
+ * brand, highlights a few primary navigation paths, and mounts the category
+ * slider so shoppers can immediately start browsing.
+ */
 import Link from 'next/link';
 import CategorySlider from './components/CategorySlider';
 
+/** Shows the home-page hero content and the category discovery section. */
 export default function HomePage() {
   return (
     <>

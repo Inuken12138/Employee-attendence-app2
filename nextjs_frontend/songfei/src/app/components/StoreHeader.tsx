@@ -1,11 +1,26 @@
 'use client';
 
+/**
+ * Shared application UI component.
+ *
+ * This file contains reusable presentation logic that is consumed by multiple storefront or ERP routes.
+ */
+
+/**
+ * Main navigation bar for the customer-facing storefront.
+ *
+ * It exposes primary links, a search form, and quick actions like cart, sign-in,
+ * and the ERP shortcut.
+ */
+
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+/** Renders storefront navigation and forwards search submissions to the product search page. */
 export default function StoreHeader() {
   const router = useRouter();
 
+  /** Reads the search box value and navigates to the product results page. */
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);

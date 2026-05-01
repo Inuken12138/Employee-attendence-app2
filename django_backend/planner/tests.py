@@ -1,3 +1,10 @@
+"""Planner backend tests covering ERP setup and customer project flows.
+
+The test cases in this file double as onboarding examples: they show how a
+catalog product becomes planner-ready, how projects are versioned and validated,
+and how a valid design turns into locked cart rows.
+"""
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APITestCase
 
@@ -7,7 +14,11 @@ from planner.models import KitchenDesignerProductProfile, KitchenProject, Kitche
 
 
 class PlannerProductProfileTests(APITestCase):
+    """Cover ERP-side planner profile editing and publication rules."""
+
     def setUp(self):
+        """Create one catalog product that can be converted into a planner product."""
+
         self.category = Category.objects.create(name='Kitchen', slug='kitchen')
         self.product = Product.objects.create(
             product_id='KIT-001',
@@ -17,6 +28,8 @@ class PlannerProductProfileTests(APITestCase):
         )
 
     def test_profile_endpoint_creates_default_profile(self):
+        """Reading the profile endpoint should lazily create a blank planner profile."""
+
         response = self.client.get(f'/api/planner/erp/products/{self.product.id}/profile/')
 
         self.assertEqual(response.status_code, 200)
@@ -25,6 +38,8 @@ class PlannerProductProfileTests(APITestCase):
         self.assertEqual(KitchenDesignerProductProfile.objects.count(), 1)
 
     def test_profile_patch_updates_metadata(self):
+        """Profile updates should persist planner metadata fields from ERP."""
+
         response = self.client.patch(
             f'/api/planner/erp/products/{self.product.id}/profile/',
             {
@@ -48,14 +63,121 @@ class PlannerProductProfileTests(APITestCase):
         self.assertEqual(response.data['width_mm'], 600)
         self.assertTrue(response.data['allow_vertical_movement'])
 
+    def test_profile_patch_accepts_assembly_composite_schema(self):
+        """Assembly-style composite schemas should be accepted when structurally valid."""
+
+        response = self.client.patch(
+            f'/api/planner/erp/products/{self.product.id}/profile/',
+            {
+                'planner_role': 'base',
+                'planner_root_category': 'cabinets',
+                'planner_group_category': 'base_cabinets',
+                'planner_leaf_category': 'with_door',
+                'interaction_schema': {
+                    'node_kind': 'assembly',
+                    'animations': [
+                        {
+                            'part_key': 'door_left',
+                            'trigger': 'open',
+                            'type': 'hinge_y',
+                        }
+                    ],
+                },
+                'constraint_schema': {
+                    'slots': [
+                        {
+                            'slot_key': 'frame',
+                            'label': 'Frame',
+                            'required': True,
+                            'cardinality': 'single',
+                        },
+                        {
+                            'slot_key': 'countertop',
+                            'label': 'Countertop',
+                            'required': True,
+                            'cardinality': 'single',
+                        },
+                    ],
+                },
+                'compatibility_schema': {
+                    'default_children': [
+                        {'slot_key': 'frame', 'product_code': 'FRAME-600'},
+                        {'slot_key': 'countertop', 'product_code': 'COUNTERTOP-600'},
+                    ],
+                    'replacement_groups': [
+                        {'slot_key': 'countertop', 'allowed_product_codes': ['COUNTERTOP-600', 'COUNTERTOP-RED-600']},
+                    ],
+                    'cutout_rules': [],
+                },
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['composite_schema']['node_kind'], 'assembly')
+        self.assertEqual(len(response.data['composite_schema']['slots']), 2)
+
+    def test_profile_patch_rejects_invalid_assembly_slot_schema(self):
+        """Broken composite slot definitions should be rejected with serializer errors."""
+
+        response = self.client.patch(
+            f'/api/planner/erp/products/{self.product.id}/profile/',
+            {
+                'planner_role': 'base',
+                'planner_root_category': 'cabinets',
+                'planner_group_category': 'base_cabinets',
+                'planner_leaf_category': 'with_door',
+                'interaction_schema': {'node_kind': 'assembly'},
+                'constraint_schema': {
+                    'slots': [
+                        {
+                            'label': 'Countertop',
+                        },
+                    ],
+                },
+                'compatibility_schema': {},
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('constraint_schema', response.data)
+
     def test_asset_validation_fails_without_glb(self):
+        """Validation should fail when no GLB file has been uploaded yet."""
+
         response = self.client.post(f'/api/planner/erp/products/{self.product.id}/asset-validate/')
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['status'], 'failed')
         self.assertTrue(response.data['errors'])
 
+    def test_asset_validation_uses_glb_native_dimensions(self):
+        """A valid GLB upload should allow the asset validation to pass."""
+
+        profile = KitchenDesignerProductProfile.objects.create(
+            product=self.product,
+            is_enabled=True,
+            planner_role='base',
+            planner_root_category='cabinets',
+            planner_group_category='base_cabinets',
+            planner_leaf_category='with_door',
+        )
+        profile.glb_file.save(
+            'base-cabinet.glb',
+            SimpleUploadedFile('base-cabinet.glb', b'glb-data', content_type='model/gltf-binary'),
+            save=True,
+        )
+
+        response = self.client.post(f'/api/planner/erp/products/{self.product.id}/asset-validate/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['status'], 'passed')
+        self.assertFalse(any('width, depth, and height' in warning.lower() for warning in response.data['warnings']))
+
     def test_stage_and_publish_after_successful_validation(self):
+        """Products should stage and publish only after passing validation."""
+
         profile = KitchenDesignerProductProfile.objects.create(
             product=self.product,
             is_enabled=True,
@@ -86,6 +208,8 @@ class PlannerProductProfileTests(APITestCase):
         self.assertEqual(publish_response.data['catalog_state'], 'published')
 
     def test_published_products_appear_in_catalog_endpoint(self):
+        """Published planner products should be visible in the planner catalog API."""
+
         KitchenDesignerProductProfile.objects.create(
             product=self.product,
             is_enabled=True,
@@ -98,6 +222,9 @@ class PlannerProductProfileTests(APITestCase):
             depth_mm=580,
             height_mm=720,
             allow_vertical_movement=False,
+            interaction_schema={'node_kind': 'assembly'},
+            constraint_schema={'slots': [{'slot_key': 'frame', 'label': 'Frame'}]},
+            compatibility_schema={'default_children': [{'slot_key': 'frame', 'product_code': 'FRAME-600'}]},
         )
 
         response = self.client.get('/api/planner/catalog/products/')
@@ -108,8 +235,12 @@ class PlannerProductProfileTests(APITestCase):
         self.assertEqual(response.data[0]['planner_role'], 'base')
         self.assertEqual(response.data[0]['planner_group_category'], 'base_cabinets')
         self.assertFalse(response.data[0]['allow_vertical_movement'])
+        self.assertEqual(response.data[0]['composite_schema']['node_kind'], 'assembly')
+        self.assertEqual(response.data[0]['composite_schema']['slots'][0]['slot_key'], 'frame')
 
     def test_catalog_endpoint_filters_by_planner_path(self):
+        """Catalog filters should narrow results by the planner taxonomy path."""
+
         KitchenDesignerProductProfile.objects.create(
             product=self.product,
             is_enabled=True,
@@ -131,12 +262,18 @@ class PlannerProductProfileTests(APITestCase):
 
 
 class PlannerProjectPersistenceTests(APITestCase):
+    """Cover project creation, versioning, validation, sharing, and duplication."""
+
     def setUp(self):
+        """Create an authenticated planner user and a second user for ownership tests."""
+
         self.user = User.objects.create_user(username='planner-user', password='secret123', role='customer')
         self.other_user = User.objects.create_user(username='other-user', password='secret123', role='customer')
         self.client.force_authenticate(user=self.user)
 
     def test_create_project_creates_initial_version(self):
+        """Creating a project should also create version 1 as the initial snapshot."""
+
         response = self.client.post(
             '/api/planner/projects/',
             {
@@ -159,6 +296,8 @@ class PlannerProjectPersistenceTests(APITestCase):
         self.assertEqual(KitchenProject.objects.first().versions.count(), 1)
 
     def test_create_version_updates_current_project_version(self):
+        """Creating a new version should promote it to the project's current version."""
+
         create_response = self.client.post(
             '/api/planner/projects/',
             {
@@ -197,6 +336,8 @@ class PlannerProjectPersistenceTests(APITestCase):
         self.assertEqual(len(detail_response.data['current_version']['scene_snapshot']['items']), 1)
 
     def test_project_list_only_returns_owner_projects(self):
+        """The project list endpoint should be scoped to the authenticated owner."""
+
         own_project = KitchenProject.objects.create(owner=self.user, title='My kitchen')
         other_project = KitchenProject.objects.create(owner=self.other_user, title='Other kitchen')
 
@@ -208,6 +349,8 @@ class PlannerProjectPersistenceTests(APITestCase):
         self.assertNotEqual(response.data[0]['slug'], other_project.slug)
 
     def test_validate_project_persists_validation_run(self):
+        """Validating a project should store a validation run in the database."""
+
         category = Category.objects.create(name='Validation items', slug='validation-items')
         product = Product.objects.create(product_id='VAL-001', name='Validation Cabinet', price=299.0, category=category)
         KitchenDesignerProductProfile.objects.create(
@@ -258,6 +401,8 @@ class PlannerProjectPersistenceTests(APITestCase):
         self.assertEqual(KitchenValidationRun.objects.count(), 1)
 
     def test_validate_project_flags_wall_attachment_rule(self):
+        """Wall-mounted products should fail validation when not attached to a wall."""
+
         category = Category.objects.create(name='Wall items', slug='wall-items')
         product = Product.objects.create(product_id='WALL-001', name='Wall Cabinet', price=180.0, category=category)
         KitchenDesignerProductProfile.objects.create(
@@ -309,6 +454,8 @@ class PlannerProjectPersistenceTests(APITestCase):
         self.assertIn('WALL_ATTACHMENT_REQUIRED', codes)
 
     def test_add_to_bag_creates_locked_cart_items(self):
+        """Add-to-bag should create locked cart items backed by a planner bundle."""
+
         category = Category.objects.create(name='Planner items', slug='planner-items')
         product = Product.objects.create(product_id='KIT-BAG', name='Bag Cabinet', price=150.0, category=category)
         KitchenDesignerProductProfile.objects.create(
@@ -374,6 +521,8 @@ class PlannerProjectPersistenceTests(APITestCase):
         self.assertTrue(item.is_removal_locked)
 
     def test_share_link_and_duplicate_flow(self):
+        """A shared project should be publicly readable and duplicable by the owner."""
+
         create_response = self.client.post(
             '/api/planner/projects/',
             {

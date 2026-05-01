@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /kitchen-designer/[projectId]/review route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -9,6 +15,7 @@ import { buildLoginRedirectUrl, hasAuthToken } from '@/lib/auth';
 import { validatePlannerProject } from '@/features/kitchen-designer/api/plannerApi';
 import type { PlannerProjectValidationResponse } from '@/features/kitchen-designer/types/planner';
 
+/** Renders the kitchen designer review page. */
 export default function KitchenDesignerReviewPage() {
   const params = useParams();
   const router = useRouter();

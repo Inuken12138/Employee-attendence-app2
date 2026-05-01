@@ -1,3 +1,10 @@
+"""URL routes for cart and checkout operations.
+
+All routes here live under the project-level ``/api/cart/`` prefix. Keeping
+them in a dedicated app URL module makes it easy for newcomers to locate the
+cart API surface quickly.
+"""
+
 from django.urls import path
 
 from commerce.views import AddProductToCartView, CartCheckoutView, CartDetailView, CartItemDetailView, CartItemListView

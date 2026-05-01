@@ -1,3 +1,10 @@
+"""Behavior tests for the commerce API.
+
+These tests document the expected cart workflow for new contributors: add a
+product, authenticate with either session or token auth, respect planner locks,
+and create an order during checkout.
+"""
+
 from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
@@ -7,13 +14,19 @@ from planner.models import KitchenCartBundle, KitchenProject, KitchenProjectVers
 
 
 class CartApiTests(APITestCase):
+    """Exercise the main customer cart and checkout flows."""
+
     def setUp(self):
+        """Create a test user and one purchasable product for cart scenarios."""
+
         self.user = User.objects.create_user(username='cart-user', password='secret123', role='customer')
         self.category = Category.objects.create(name='Kitchen', slug='kitchen-cart')
         self.product = Product.objects.create(product_id='PRD-001', name='Drawer Front', price=49.0, category=self.category)
         self.client.force_authenticate(user=self.user)
 
     def test_add_product_to_cart(self):
+        """Adding a product should create a cart line and update totals."""
+
         response = self.client.post('/api/cart/add-product/', {'product_id': self.product.id, 'quantity': 2}, format='json')
 
         self.assertEqual(response.status_code, 201)
@@ -22,6 +35,8 @@ class CartApiTests(APITestCase):
         self.assertEqual(response.data['cart']['items'][0]['product']['id'], self.product.id)
 
     def test_token_auth_can_access_cart_endpoints(self):
+        """Cart endpoints should work with token authentication as well as session auth."""
+
         self.client.force_authenticate(user=None)
         token = Token.objects.create(user=self.user)
 
@@ -34,6 +49,8 @@ class CartApiTests(APITestCase):
         self.assertEqual(response.data['total_quantity'], 0)
 
     def test_locked_bundle_item_cannot_be_removed(self):
+        """Planner-owned bundle rows should reject direct cart deletion."""
+
         project = KitchenProject.objects.create(owner=self.user, title='Bundle project')
         version = KitchenProjectVersion.objects.create(project=project, version_name='Version 1', created_by=self.user, version_number=1)
         project.current_version = version
@@ -58,6 +75,8 @@ class CartApiTests(APITestCase):
         self.assertIn('locked', delete_response.data['detail'])
 
     def test_checkout_creates_order_and_clears_cart(self):
+        """Checkout should create an order snapshot and empty the active cart."""
+
         self.client.post('/api/cart/add-product/', {'product_id': self.product.id, 'quantity': 2}, format='json')
 
         response = self.client.post('/api/cart/checkout/')

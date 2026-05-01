@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Reusable kitchen designer UI component.
+ *
+ * These components support the planner flow with review widgets, subheaders, drawers, and guided controls.
+ */
+
 import { formatMillimeters } from '../lib/measurementMath';
 import type { PlannerRoom, PlannerStage } from '../types/planner';
 import PlannerPriceSummary from './PlannerPriceSummary';
@@ -14,6 +20,7 @@ interface PlannerSubheaderProps {
   onHeightChange: (nextMm: number) => void;
 }
 
+/** Renders the planner subheader component used by this module. */
 export default function PlannerSubheader({
   stage,
   room,

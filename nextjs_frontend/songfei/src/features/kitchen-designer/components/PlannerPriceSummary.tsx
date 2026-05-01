@@ -1,10 +1,17 @@
 'use client';
 
+/**
+ * Reusable kitchen designer UI component.
+ *
+ * These components support the planner flow with review widgets, subheaders, drawers, and guided controls.
+ */
+
 interface PlannerPriceSummaryProps {
   amount: number;
   placement?: 'compact' | 'sidebar';
 }
 
+/** Renders the planner price summary component used by this module. */
 export default function PlannerPriceSummary({ amount, placement = 'compact' }: PlannerPriceSummaryProps) {
   const compact = placement === 'compact';
 

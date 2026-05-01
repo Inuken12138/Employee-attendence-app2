@@ -1,3 +1,10 @@
+"""Shared parsing and roster helpers used across attendance and payroll flows.
+
+These utilities keep low-level normalization rules in one place: worker-id and
+name cleanup, clock parsing, attendance date extraction, roster schedule
+validation, and turning saved roster templates into day-by-day lookups.
+"""
+
 import re
 from datetime import date, datetime, timedelta
 
@@ -16,14 +23,20 @@ _TIME_VALUE_PATTERN = re.compile(r'^(\d{1,2}):(\d{1,2})$')
 
 
 def normalize_worker_id(value):
+    """Trim and stringify a worker ID so identity comparisons stay consistent."""
+
     return str(value or '').strip()
 
 
 def normalize_employee_name(value):
+    """Collapse spacing and case-fold employee names for tolerant matching."""
+
     return re.sub(r'\s+', ' ', str(value or '').strip()).casefold()
 
 
 def normalize_clock_time(value):
+    """Return a normalized ``HH:MM`` time string or an empty string if invalid."""
+
     match = _TIME_VALUE_PATTERN.match(str(value or '').strip())
     if not match:
         return ''
@@ -37,6 +50,8 @@ def normalize_clock_time(value):
 
 
 def parse_attendance_date_range(value):
+    """Extract start and end dates from free-form attendance sheet text."""
+
     matches = re.findall(r'\d{4}-\d{1,2}-\d{1,2}', str(value or ''))
     if len(matches) < 2:
         return None, None
@@ -51,6 +66,8 @@ def parse_attendance_date_range(value):
 
 
 def parse_sheet_generated_at(value):
+    """Extract the sheet generation timestamp when present in header text."""
+
     match = re.search(r'\d{4}-\d{1,2}-\d{1,2}(?:\s+\d{1,2}:\d{2}:\d{2})?', str(value or ''))
     if not match:
         return None
@@ -68,6 +85,8 @@ def parse_sheet_generated_at(value):
 
 
 def build_roster_schedule_lookup(raw_schedule, cycle_length_weeks):
+    """Convert a validated schedule list into a fast lookup keyed by week/day."""
+
     return {
         (entry['week_index'], entry['day_of_week']): entry
         for entry in validate_roster_schedule(raw_schedule, cycle_length_weeks)
@@ -75,6 +94,8 @@ def build_roster_schedule_lookup(raw_schedule, cycle_length_weeks):
 
 
 def resolve_roster_day(schedule_lookup, cycle_length_weeks, effective_start_date, target_date):
+    """Resolve which roster entry applies to a specific calendar day."""
+
     if not schedule_lookup or not effective_start_date or not target_date or cycle_length_weeks < 1:
         return None
 
@@ -101,6 +122,8 @@ def resolve_roster_day(schedule_lookup, cycle_length_weeks, effective_start_date
 
 
 def build_default_roster_schedule(cycle_length_weeks):
+    """Create an all-off placeholder schedule for the requested cycle length."""
+
     schedule = []
     for week_index in range(1, cycle_length_weeks + 1):
         for day_of_week in range(7):
@@ -117,6 +140,12 @@ def build_default_roster_schedule(cycle_length_weeks):
 
 
 def validate_roster_schedule(raw_schedule, cycle_length_weeks):
+    """Normalize and validate a roster template's schedule payload.
+
+    The function returns a fully populated week/day matrix so later code does
+    not need to handle missing entries.
+    """
+
     if cycle_length_weeks < 1 or cycle_length_weeks > 4:
         raise ValueError('Cycle length must be between 1 and 4 weeks.')
 
@@ -185,6 +214,8 @@ def validate_roster_schedule(raw_schedule, cycle_length_weeks):
 
 
 def summarize_roster_schedule(raw_schedule, cycle_length_weeks):
+    """Produce human-readable weekly summary lines for roster templates."""
+
     schedule = validate_roster_schedule(raw_schedule, cycle_length_weeks)
     summary_lines = []
 

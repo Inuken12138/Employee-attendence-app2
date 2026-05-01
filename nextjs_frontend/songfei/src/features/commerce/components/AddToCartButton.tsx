@@ -1,5 +1,18 @@
 'use client';
 
+/**
+ * Reusable commerce UI component.
+ *
+ * These components render cart or product-purchase interactions and delegate data changes back to feature-level state or API helpers.
+ */
+
+/**
+ * Reusable storefront button for adding one product to the cart.
+ *
+ * It handles login gating, calls the cart API, and optionally turns an add-to-
+ * cart action into a "buy now" redirect straight to the cart page.
+ */
+
 import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -8,6 +21,7 @@ import { buildLoginRedirectUrl, hasAuthToken } from '@/lib/auth';
 
 import { addProductToCart } from '../api/cartApi';
 
+/** Adds a product to the cart and updates the button state to reflect progress or success. */
 export default function AddToCartButton({
   productId,
   mode = 'add',
@@ -25,6 +39,7 @@ export default function AddToCartButton({
   const [loading, setLoading] = useState(false);
   const [added, setAdded] = useState(false);
 
+  /** Performs the guarded add-to-cart flow and redirects when buy-now mode is used. */
   const handleClick = async () => {
     if (!hasAuthToken()) {
       router.push(buildLoginRedirectUrl(pathname || '/products'));

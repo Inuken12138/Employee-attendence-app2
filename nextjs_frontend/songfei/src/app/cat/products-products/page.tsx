@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /cat/products-products route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -13,6 +19,7 @@ interface Category {
   children: Category[];
 }
 
+/** Renders the products catalogue page. */
 export default function ProductsCataloguePage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);

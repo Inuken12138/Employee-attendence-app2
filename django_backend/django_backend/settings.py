@@ -52,6 +52,19 @@ Current Implementation
 - REST Framework integration
 - Custom core app
 - CORS headers support
+
+Central Django settings for the entire backend runtime.
+
+This file answers the big environment questions a new backend developer usually
+has first:
+
+- Which apps are installed?
+- Which database does the project use in development and in tests?
+- Which authentication backends are enabled?
+- Which frontend origins may call the API?
+
+When the backend behaves differently between local runs and tests, this file is
+usually the first place to inspect.
 """
 
 from pathlib import Path

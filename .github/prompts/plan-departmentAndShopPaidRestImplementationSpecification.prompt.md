@@ -381,7 +381,7 @@ Rules:
 
 - department stays optional in v1
 - do not block save when department is blank
-- keep existing required fields for name, worker ID, and base salary unchanged
+- keep existing required fields for name and worker ID unchanged; monthly salary is managed through the compensation ledger rather than the employee record
 
 ### 4. Payroll Operations Extension
 

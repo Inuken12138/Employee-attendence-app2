@@ -1,5 +1,18 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /register route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
+/**
+ * Handles self-service customer registration.
+ *
+ * The page creates a customer account, immediately signs the new user in, stores
+ * the returned token, and then sends them into the kitchen designer flow.
+ */
+
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,6 +20,7 @@ import { useRouter } from 'next/navigation';
 import useErrorPopup from '../hooks/useErrorPopup';
 import { buildApiUrl } from '@/lib/api';
 
+/** Renders the registration form and chains registration into automatic sign-in. */
 export default function RegisterPage() {
   const router = useRouter();
   const { showErrorPopup } = useErrorPopup();
@@ -15,6 +29,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  /** Creates the account, logs the new user in, and redirects to the planner landing page. */
   const handleRegister = async (event: FormEvent) => {
     event.preventDefault();
     setLoading(true);

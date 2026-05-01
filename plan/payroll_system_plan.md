@@ -46,7 +46,7 @@ Each employee has a baseline monthly package made of:
 
 - `monthly_salary`: employee-specific fixed monthly salary
 - `rice_allowance`: fixed amount, same for all employees
-- `social_security_allowance`: fixed amount, optional because trial-period employees do not receive it
+- `social_security_allowance`: fixed amount, optional because the employer decides manually whether the employee receives it
 
 Recommended monthly base formula:
 
@@ -448,7 +448,6 @@ Fields:
 - `rice_allowance_amount` optional override if needed
 - `social_security_allowance_amount` optional override if needed
 - `eligible_for_social_security`
-- `trial_period_end_date` optional
 - `payroll_policy` optional override or inherited default
 - `effective_from`
 - `effective_to`
@@ -1421,7 +1420,7 @@ These rules are now confirmed from your latest clarification:
 15. Project work can be recorded as full day, half day, or raw hours.
 16. For v1 hour-based project entries, use raw hour quantities and do not require exact time ranges.
 17. Do not automatically warn or block project entries based on available work time in v1; trust accountant-entered project quantities even when rush work or overtime is involved.
-18. Trial-period employees are excluded only from social security, not from other bonuses.
+18. Social security eligibility is a manual employer decision in the compensation ledger. No payroll allowance changes automatically from a date-based status flag.
 19. Rounding happens only once at the very end of payroll, to the nearest thousand kip.
 20. The rounding note should appear on both employee and management reports.
 21. If a correction run shows the employer underpaid the employee, the underpayment should be paid immediately and not carried forward.

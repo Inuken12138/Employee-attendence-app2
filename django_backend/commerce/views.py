@@ -1,3 +1,10 @@
+"""HTTP endpoints for cart browsing, cart mutation, and checkout.
+
+These views power the shopper-facing cart API. They stay intentionally small:
+each class handles one narrow workflow and leans on serializers/models for the
+data shape.
+"""
+
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -9,6 +16,12 @@ from core.models import Product
 
 
 def get_or_create_active_cart(user):
+    """Return the caller's active cart, creating or reactivating it if needed.
+
+    The project assumes one cart per user. This helper centralizes that rule so
+    all cart endpoints behave consistently.
+    """
+
     cart, _ = Cart.objects.get_or_create(user=user, defaults={'status': Cart.Status.ACTIVE})
     if cart.status != Cart.Status.ACTIVE:
         cart.status = Cart.Status.ACTIVE
@@ -17,18 +30,26 @@ def get_or_create_active_cart(user):
 
 
 class CartDetailView(APIView):
+    """Return the authenticated user's current cart summary."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """Load or create the active cart and serialize it for the frontend."""
+
         cart = get_or_create_active_cart(request.user)
         serializer = CartSerializer(cart, context={'request': request})
         return Response(serializer.data)
 
 
 class CartItemListView(APIView):
+    """Return only the line items for the authenticated user's cart."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """List cart lines in creation order for cart-detail UIs."""
+
         cart = get_or_create_active_cart(request.user)
         items = cart.items.select_related('product', 'kitchen_bundle__project').order_by('created_at', 'id')
         serializer = CartItemSerializer(items, many=True, context={'request': request})
@@ -36,9 +57,13 @@ class CartItemListView(APIView):
 
 
 class AddProductToCartView(APIView):
+    """Append a catalog product to the current cart or increment an existing line."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        """Validate input, resolve the product, and update the active cart."""
+
         serializer = AddProductToCartSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -70,13 +95,19 @@ class AddProductToCartView(APIView):
 
 
 class CartItemDetailView(APIView):
+    """Handle per-line cart edits such as quantity changes and deletion."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def _get_item(self, request, item_id):
+        """Fetch a cart item and guarantee it belongs to the current user."""
+
         cart = get_or_create_active_cart(request.user)
         return get_object_or_404(cart.items.select_related('product', 'kitchen_bundle__project'), pk=item_id)
 
     def patch(self, request, item_id):
+        """Update item quantity when the line is not locked by planner rules."""
+
         item = self._get_item(request, item_id)
         if item.is_quantity_locked:
             return Response({'detail': 'This cart line is locked. Edit it in the kitchen designer instead.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -96,6 +127,8 @@ class CartItemDetailView(APIView):
         return Response(serializer.data)
 
     def delete(self, request, item_id):
+        """Delete a cart line unless planner rules have locked removal."""
+
         item = self._get_item(request, item_id)
         if item.is_removal_locked:
             return Response({'detail': 'This cart line is locked. Remove it from the kitchen designer instead.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -105,9 +138,17 @@ class CartItemDetailView(APIView):
 
 
 class CartCheckoutView(APIView):
+    """Convert the active cart into an order and clear the cart afterwards."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        """Create an order snapshot, copy lines, and update planner bundles.
+
+        Checkout copies each cart item into ``OrderItem`` rows so later price
+        or product changes do not rewrite history.
+        """
+
         cart = get_or_create_active_cart(request.user)
         items = list(cart.items.select_related('product', 'kitchen_bundle__project').order_by('created_at', 'id'))
         if not items:

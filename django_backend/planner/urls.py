@@ -1,3 +1,10 @@
+"""Planner-specific API routes.
+
+These endpoints are mounted under ``/api/planner/`` and cover three main jobs:
+ERP-side planner product setup, customer project persistence, and shared/public
+review flows for kitchen designs.
+"""
+
 from django.urls import path
 
 from planner.views import (

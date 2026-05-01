@@ -1,7 +1,16 @@
+"""Scene validation rules for kitchen project versions.
+
+This module checks a saved room snapshot for geometry and business-rule issues:
+missing planner metadata, products outside the room, unsupported placements,
+missing benchtops, and collisions between placed items.
+"""
+
 from planner.models import KitchenDesignerProductProfile, KitchenValidationRun
 
 
 def _make_issue(code, severity, message, node_id=None, focus=None, suggested_fixes=None):
+    """Build a consistent issue payload for frontend review screens."""
+
     issue = {
         'code': code,
         'severity': severity,
@@ -16,6 +25,8 @@ def _make_issue(code, severity, message, node_id=None, focus=None, suggested_fix
 
 
 def _get_item_bounds(item):
+    """Convert one scene item into an axis-aligned bounding box in room space."""
+
     position = item.get('position') or {}
     width = max(float(item.get('widthMm') or 0), 0)
     depth = max(float(item.get('depthMm') or 0), 0)
@@ -35,6 +46,8 @@ def _get_item_bounds(item):
 
 
 def _overlaps(bounds_a, bounds_b):
+    """Return whether two axis-aligned bounding boxes overlap."""
+
     return (
         bounds_a['min_x'] < bounds_b['max_x']
         and bounds_a['max_x'] > bounds_b['min_x']
@@ -46,6 +59,12 @@ def _overlaps(bounds_a, bounds_b):
 
 
 def validate_project_version(project_version):
+    """Run planner validation for one saved project version and persist the result.
+
+    Validation produces both a machine-readable status and a list of actionable
+    issues so the frontend can highlight exactly what the user needs to fix.
+    """
+
     snapshot = project_version.scene_snapshot or {}
     room = snapshot.get('room') or {}
     items = snapshot.get('items') or []
@@ -209,7 +228,7 @@ def validate_project_version(project_version):
                 )
             )
 
-        if profile and all([profile.width_mm, profile.depth_mm, profile.height_mm]):
+        if profile and not profile.glb_file and all([profile.width_mm, profile.depth_mm, profile.height_mm]):
             dimension_mismatch = any(
                 [
                     abs(float(item.get('widthMm') or 0) - float(profile.width_mm)) > 1,

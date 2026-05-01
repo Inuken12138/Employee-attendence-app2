@@ -1,3 +1,8 @@
+/**
+ * Defines the Next.js page module for the /kitchen-designer/[projectId] route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
 import Link from 'next/link';
 
 import DesignerShell from '@/features/kitchen-designer/editor/DesignerShell';

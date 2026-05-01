@@ -1,3 +1,8 @@
+/**
+ * Babylon-based runtime helper for the kitchen designer.
+ *
+ * This file contains rendering or math glue that powers the richer interactive planner experience.
+ */
 import '@babylonjs/loaders/glTF';
 
 import {
@@ -37,11 +42,12 @@ interface PlannerRuntimeCallbacks {
   onSelectNode: (nodeId: string | null) => void;
   onDeleteNode: (nodeId: string) => void;
   onSetInteractionMode: (mode: PlannerInteractionMode) => void;
+  onUpdateNodeDimensions: (nodeId: string, dimensions: { widthMm: number; depthMm: number; heightMm: number }) => void;
   onUpdateNodePosition: (nodeId: string, position: Partial<{ x: number; y: number; z: number }>) => void;
   onUpdateNodeRotation: (nodeId: string, rotationY: number) => void;
 }
 
-type RoomWallName = 'back' | 'left' | 'right';
+type RoomWallName = 'front' | 'back' | 'left' | 'right';
 
 interface PlannerRuntimeState {
   room: PlannerRoom;
@@ -98,23 +104,27 @@ const PROXY_COLOR = new Color3(0.843, 0.875, 0.894);
 const SELECT_COLOR = new Color3(0.345, 0.792, 1);
 const HOVER_COLOR = new Color3(0.969, 0.769, 0.435);
 const INVALID_COLOR = new Color3(1, 0.42, 0.42);
-const WALL_COLORS = ['#d8d8d6', '#cfd0d2', '#e2e1df'];
+const WALL_COLORS = ['#d8d8d6', '#ddd9d3', '#cfd0d2', '#e2e1df'];
 const BASEBOARD_COLOR = '#f4f1ec';
 const DRAG_VERTICAL_MM_PER_PIXEL = 4;
-const ROOM_WALL_NAMES: RoomWallName[] = ['back', 'left', 'right'];
+const ROOM_WALL_NAMES: RoomWallName[] = ['front', 'back', 'left', 'right'];
 const CAMERA_PAN_LIMIT_RATIO = 0.18;
 const CAMERA_MIN_TARGET_HEIGHT_RATIO = 0.18;
 const CAMERA_MAX_TARGET_HEIGHT_RATIO = 0.58;
+const FRONT_WALL_HIDE_THRESHOLD = 0.28;
+const FRONT_CORNER_HIDE_Z_THRESHOLD = 0.08;
 const BACK_WALL_HIDE_THRESHOLD = -0.28;
 const SIDE_WALL_HIDE_THRESHOLD = 0.7;
 const SIDE_ONLY_Z_THRESHOLD = 0.28;
 const CORNER_HIDE_Z_THRESHOLD = -0.08;
 const CORNER_HIDE_X_THRESHOLD = 0.38;
 
+/** Clamps the value so it stays within allowed limits. */
 function clampValue(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Splits the asset url into smaller pieces for further processing. */
 function splitAssetUrl(url: string) {
   const lastSlashIndex = url.lastIndexOf('/');
 
@@ -128,12 +138,14 @@ function splitAssetUrl(url: string) {
   };
 }
 
+/** Sets the button state for the current workflow. */
 function setButtonState(button: GUI.Button, active: boolean) {
   button.background = active ? '#58caff' : 'rgba(255,255,255,0.92)';
   button.color = active ? '#ffffff' : '#2f2a23';
   button.thickness = active ? 0 : 1;
 }
 
+/** Helper used by this module to manage dispose meshes. */
 function disposeMeshes(meshes: AbstractMesh[]) {
   meshes.forEach((mesh) => mesh.dispose(false, true));
 }
@@ -163,6 +175,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     new Vector3(initialFrame.target.x, initialFrame.target.y, initialFrame.target.z),
     scene,
   );
+  /** Helper used by this module to manage attach camera controls. */
   const attachCameraControls = () => {
     camera.attachControl(true, false, 2);
   };
@@ -215,6 +228,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
   let hoveredNodeId: string | null = null;
   let pointerDownInfo: { x: number; y: number; nodeId: string | null; button: number } | null = null;
   let invalidNodeId: string | null = null;
+  let uiPointerSequenceActive = false;
 
   const ui = GUI.AdvancedDynamicTexture.CreateFullscreenUI('planner-ui', true, scene);
   const actionPanel = new GUI.StackPanel('planner-action-panel');
@@ -224,6 +238,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
   actionPanel.horizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
   actionPanel.verticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
   actionPanel.isVisible = false;
+  actionPanel.isPointerBlocker = true;
   ui.addControl(actionPanel);
 
   const selectionLabel = new GUI.TextBlock('planner-selection-label', '');
@@ -232,6 +247,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
   selectionLabel.fontSize = 15;
   selectionLabel.fontWeight = '600';
   selectionLabel.paddingBottom = '6px';
+  selectionLabel.isPointerBlocker = true;
   actionPanel.addControl(selectionLabel);
 
   const feedbackLabel = new GUI.TextBlock('planner-feedback-label', '');
@@ -239,12 +255,14 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
   feedbackLabel.color = '#7a6750';
   feedbackLabel.fontSize = 12;
   feedbackLabel.paddingBottom = '8px';
+  feedbackLabel.isPointerBlocker = true;
   actionPanel.addControl(feedbackLabel);
 
   const buttonRow = new GUI.StackPanel('planner-button-row');
   buttonRow.isVertical = false;
   buttonRow.height = '58px';
   buttonRow.spacing = 8;
+  buttonRow.isPointerBlocker = true;
   actionPanel.addControl(buttonRow);
 
   const moveButton = GUI.Button.CreateSimpleButton('planner-action-move', 'Move');
@@ -268,6 +286,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     button.shadowOffsetX = 0;
     button.paddingLeft = '2px';
     button.paddingRight = '2px';
+    button.isPointerBlocker = true;
     buttonRow.addControl(button);
   }
 
@@ -275,6 +294,20 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
   deleteButton.color = '#fff1f2';
   deleteButton.thickness = 0;
 
+  /** Helper used by this module to manage begin ui pointer sequence. */
+  function beginUiPointerSequence() {
+    uiPointerSequenceActive = true;
+    pointerDownInfo = null;
+    updateHoveredNodeId(null);
+  }
+
+  for (const button of [moveButton, rotateButton, verticalButton, deleteButton]) {
+    button.onPointerDownObservable.add(() => {
+      beginUiPointerSequence();
+    });
+  }
+
+  /** Helper used by this module to manage mutate local node. */
   function mutateLocalNode(nodeId: string, patch: Partial<PlannerNode>) {
     currentState = {
       ...currentState,
@@ -282,6 +315,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     };
   }
 
+  /** Helper used by this module to manage mutate local node position. */
   function mutateLocalNodePosition(nodeId: string, position: Partial<{ x: number; y: number; z: number }>) {
     currentState = {
       ...currentState,
@@ -299,6 +333,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     };
   }
 
+  /** Sets the selected node for the current workflow. */
   function setSelectedNode(nodeId: string | null) {
     currentState = {
       ...currentState,
@@ -313,6 +348,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     syncNodeVisuals();
   }
 
+  /** Sets the interaction mode for the current workflow. */
   function setInteractionMode(mode: PlannerInteractionMode) {
     currentState = {
       ...currentState,
@@ -322,10 +358,12 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     syncUi();
   }
 
+  /** Returns the selected node for the current input. */
   function getSelectedNode() {
     return currentState.nodes.find((node) => node.nodeId === currentState.selectedNodeId) ?? null;
   }
 
+  /** Helper used by this module to manage sync camera. */
   function syncCamera() {
     const nextSignature = JSON.stringify([
       currentState.room.widthMm,
@@ -348,6 +386,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     camera.upperRadiusLimit = frame.maxRadius;
   }
 
+  /** Clamps the camera target so it stays within allowed limits. */
   function clampCameraTarget() {
     const roomWidth = currentState.room.widthMm * MM_TO_SCENE;
     const roomDepth = currentState.room.depthMm * MM_TO_SCENE;
@@ -369,6 +408,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     }
   }
 
+  /** Returns the hidden wall names for the current input. */
   function getHiddenWallNames() {
     const hiddenWalls = new Set<RoomWallName>();
     const roomHalfWidth = Math.max((currentState.room.widthMm * MM_TO_SCENE) / 2, 0.001);
@@ -376,7 +416,20 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     const xNorm = camera.position.x / roomHalfWidth;
     const zNorm = camera.position.z / roomHalfDepth;
 
-    if (zNorm > SIDE_ONLY_Z_THRESHOLD) {
+    if (zNorm >= FRONT_WALL_HIDE_THRESHOLD) {
+      hiddenWalls.add('front');
+      return hiddenWalls;
+    }
+
+    if (zNorm >= FRONT_CORNER_HIDE_Z_THRESHOLD && xNorm <= -CORNER_HIDE_X_THRESHOLD) {
+      hiddenWalls.add('front');
+      hiddenWalls.add('left');
+      return hiddenWalls;
+    }
+
+    if (zNorm >= FRONT_CORNER_HIDE_Z_THRESHOLD && xNorm >= CORNER_HIDE_X_THRESHOLD) {
+      hiddenWalls.add('front');
+      hiddenWalls.add('right');
       return hiddenWalls;
     }
 
@@ -397,15 +450,16 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
       return hiddenWalls;
     }
 
-    if (zNorm <= SIDE_ONLY_Z_THRESHOLD && xNorm <= -SIDE_WALL_HIDE_THRESHOLD) {
+    if (Math.abs(zNorm) <= SIDE_ONLY_Z_THRESHOLD && xNorm <= -SIDE_WALL_HIDE_THRESHOLD) {
       hiddenWalls.add('left');
-    } else if (zNorm <= SIDE_ONLY_Z_THRESHOLD && xNorm >= SIDE_WALL_HIDE_THRESHOLD) {
+    } else if (Math.abs(zNorm) <= SIDE_ONLY_Z_THRESHOLD && xNorm >= SIDE_WALL_HIDE_THRESHOLD) {
       hiddenWalls.add('right');
     }
 
     return hiddenWalls;
   }
 
+  /** Helper used by this module to manage sync wall visibility. */
   function syncWallVisibility() {
     const hiddenWalls = getHiddenWallNames();
 
@@ -416,6 +470,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     });
   }
 
+  /** Builds the room material used by this module. */
   function buildRoomMaterial(name: string, color: string) {
     const material = new StandardMaterial(name, scene);
     material.diffuseColor = Color3.FromHexString(color);
@@ -424,6 +479,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     return material;
   }
 
+  /** Helper used by this module to manage rebuild room. */
   function rebuildRoom() {
     const nextSignature = JSON.stringify([
       currentState.room.widthMm,
@@ -468,10 +524,11 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     outerMaterial.specularColor = Color3.Black();
     outerGround.material = outerMaterial;
 
-    const wallSpecs = [
+    const wallSpecs: Array<{ name: RoomWallName; position: Vector3; size: Vector3; color: string }> = [
+      { name: 'front', position: new Vector3(0, height / 2, depth / 2), size: new Vector3(width, height, 0.045), color: WALL_COLORS[0] },
       { name: 'back', position: new Vector3(0, height / 2, -depth / 2), size: new Vector3(width, height, 0.045), color: WALL_COLORS[0] },
-      { name: 'left', position: new Vector3(-width / 2, height / 2, 0), size: new Vector3(0.045, height, depth), color: WALL_COLORS[1] },
-      { name: 'right', position: new Vector3(width / 2, height / 2, 0), size: new Vector3(0.045, height, depth), color: WALL_COLORS[2] },
+      { name: 'left', position: new Vector3(-width / 2, height / 2, 0), size: new Vector3(0.045, height, depth), color: WALL_COLORS[2] },
+      { name: 'right', position: new Vector3(width / 2, height / 2, 0), size: new Vector3(0.045, height, depth), color: WALL_COLORS[3] },
     ];
 
     for (const spec of wallSpecs) {
@@ -488,7 +545,8 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
       roomMeshes.push(wall);
     }
 
-    const baseboardSpecs = [
+    const baseboardSpecs: Array<{ name: RoomWallName; position: Vector3; size: Vector3 }> = [
+      { name: 'front', position: new Vector3(0, 0.04, depth / 2 - 0.01), size: new Vector3(Math.max(width - 0.04, 0.04), 0.08, 0.02) },
       { name: 'back', position: new Vector3(0, 0.04, -depth / 2 + 0.01), size: new Vector3(Math.max(width - 0.04, 0.04), 0.08, 0.02) },
       { name: 'left', position: new Vector3(-width / 2 + 0.01, 0.04, 0), size: new Vector3(0.02, 0.08, Math.max(depth - 0.04, 0.04)) },
       { name: 'right', position: new Vector3(width / 2 - 0.01, 0.04, 0), size: new Vector3(0.02, 0.08, Math.max(depth - 0.04, 0.04)) },
@@ -511,6 +569,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     syncWallVisibility();
   }
 
+  /** Helper used by this module to manage dispose node asset. */
   function disposeNodeAsset(handle: NodeHandle) {
     if (handle.assetRoot) {
       handle.assetRoot.dispose(false, true);
@@ -523,18 +582,21 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     handle.pickMesh.isVisible = false;
   }
 
+  /** Updates the proxy dimensions and returns the next value. */
   function updateProxyDimensions(handle: NodeHandle, node: PlannerNode) {
     handle.proxyMesh.scaling.set(node.widthMm * MM_TO_SCENE, node.heightMm * MM_TO_SCENE, node.depthMm * MM_TO_SCENE);
     handle.pickMesh.scaling.set(node.widthMm * MM_TO_SCENE, node.heightMm * MM_TO_SCENE, node.depthMm * MM_TO_SCENE);
     handle.contourMesh.scaling.set(node.widthMm * MM_TO_SCENE + 0.02, node.heightMm * MM_TO_SCENE + 0.02, node.depthMm * MM_TO_SCENE + 0.02);
   }
 
+  /** Updates the node transforms and returns the next value. */
   function updateNodeTransforms(handle: NodeHandle, node: PlannerNode) {
     handle.root.position.set(node.position.x * MM_TO_SCENE, node.position.y * MM_TO_SCENE, node.position.z * MM_TO_SCENE);
     handle.root.rotation.set(0, node.rotationY, 0);
     updateProxyDimensions(handle, node);
   }
 
+  /** Helper used by this module to manage apply render state. */
   function applyRenderState(handle: NodeHandle, nodeId: string) {
     const selected = currentState.selectedNodeId === nodeId;
     const hovered = hoveredNodeId === nodeId;
@@ -557,6 +619,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     }
   }
 
+  /** Helper used by this module to manage sync node visuals. */
   function syncNodeVisuals() {
     nodeHandles.forEach((handle, nodeId) => {
       applyRenderState(handle, nodeId);
@@ -628,12 +691,27 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
       if (renderMeshes.length > 0 && Number.isFinite(minX)) {
         const size = new Vector3(maxX - minX, maxY - minY, maxZ - minZ);
         const center = new Vector3(minX + size.x / 2, minY + size.y / 2, minZ + size.z / 2);
-        const scaleX = (node.widthMm * MM_TO_SCENE) / Math.max(size.x, 0.0001);
-        const scaleY = (node.heightMm * MM_TO_SCENE) / Math.max(size.y, 0.0001);
-        const scaleZ = (node.depthMm * MM_TO_SCENE) / Math.max(size.z, 0.0001);
+        const measuredDimensions = {
+          widthMm: Math.max(Math.round(size.x / MM_TO_SCENE), 1),
+          heightMm: Math.max(Math.round(size.y / MM_TO_SCENE), 1),
+          depthMm: Math.max(Math.round(size.z / MM_TO_SCENE), 1),
+        };
 
-        assetRoot.scaling.set(scaleX, scaleY, scaleZ);
-        assetRoot.position.set(-center.x * scaleX, -center.y * scaleY, -center.z * scaleZ);
+        assetRoot.scaling.set(1, 1, 1);
+        assetRoot.position.set(-center.x, -center.y, -center.z);
+
+        if (
+          Math.abs(node.widthMm - measuredDimensions.widthMm) > 1 ||
+          Math.abs(node.heightMm - measuredDimensions.heightMm) > 1 ||
+          Math.abs(node.depthMm - measuredDimensions.depthMm) > 1
+        ) {
+          mutateLocalNode(node.nodeId, measuredDimensions);
+          callbacks.onUpdateNodeDimensions(node.nodeId, measuredDimensions);
+          const nextNode = currentState.nodes.find((item) => item.nodeId === node.nodeId);
+          if (nextNode) {
+            updateProxyDimensions(handle, nextNode);
+          }
+        }
       }
 
       handle.assetRoot = assetRoot;
@@ -650,6 +728,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     }
   }
 
+  /** Creates the node handle used by this module. */
   function createNodeHandle(node: PlannerNode) {
     const root = new TransformNode(`planner-node-${node.nodeId}`, scene);
 
@@ -700,6 +779,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     void ensureNodeAsset(handle, node);
   }
 
+  /** Removes the node handle from the current state or backend. */
   function removeNodeHandle(nodeId: string) {
     const handle = nodeHandles.get(nodeId);
 
@@ -711,6 +791,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     nodeHandles.delete(nodeId);
   }
 
+  /** Helper used by this module to manage sync nodes. */
   function syncNodes() {
     const liveIds = new Set(currentState.nodes.map((node) => node.nodeId));
 
@@ -735,6 +816,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     syncNodeVisuals();
   }
 
+  /** Helper used by this module to manage sync ui. */
   function syncUi() {
     const selectedNode = getSelectedNode();
     actionPanel.isVisible = Boolean(selectedNode);
@@ -759,6 +841,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     setButtonState(verticalButton, currentState.interactionMode === 'vertical');
   }
 
+  /** Returns the picked node id for the current input. */
   function getPickedNodeId(mesh: AbstractMesh | null | undefined) {
     let current: AbstractMesh | null | undefined = mesh;
 
@@ -773,6 +856,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     return null;
   }
 
+  /** Updates the hovered node id and returns the next value. */
   function updateHoveredNodeId(nodeId: string | null) {
     if (hoveredNodeId === nodeId) {
       return;
@@ -782,6 +866,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     syncNodeVisuals();
   }
 
+  /** Helper used by this module to manage pick point on horizontal plane. */
   function pickPointOnHorizontalPlane(yMm: number) {
     const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, null, camera);
     const planeY = yMm * MM_TO_SCENE;
@@ -799,6 +884,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     return ray.origin.add(ray.direction.scale(distance));
   }
 
+  /** Helper used by this module to manage begin drag. */
   function beginDrag(node: PlannerNode, event: PointerEvent) {
     if (currentState.interactionMode === 'inspect') {
       return;
@@ -850,6 +936,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     }
   }
 
+  /** Helper used by this module to manage end drag. */
   function endDrag() {
     dragState = null;
     invalidNodeId = null;
@@ -859,6 +946,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     syncNodeVisuals();
   }
 
+  /** Updates the drag and returns the next value. */
   function updateDrag(event: PointerEvent) {
     if (!dragState) {
       return;
@@ -1008,6 +1096,13 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
   scene.onPointerObservable.add((pointerInfo) => {
     const nativeEvent = pointerInfo.event as PointerEvent;
 
+    if (uiPointerSequenceActive) {
+      if (pointerInfo.type === PointerEventTypes.POINTERUP) {
+        uiPointerSequenceActive = false;
+      }
+      return;
+    }
+
     if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
       if (dragState) {
         updateDrag(nativeEvent);
@@ -1084,6 +1179,7 @@ export async function createPlannerRuntime({ canvas, compact = false, callbacks 
     scene.render();
   });
 
+  /** Handles the resize interaction for this component. */
   const handleResize = () => {
     engine.resize();
   };

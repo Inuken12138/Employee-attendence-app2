@@ -1,7 +1,11 @@
+"""Normalize worker IDs and temporarily enforce worker-id uniqueness."""
+
 from django.db import migrations, models
 
 
 def normalize_worker_ids(apps, schema_editor):
+	"""Trim stored worker IDs before applying the uniqueness constraint."""
+
 	Employee = apps.get_model('core', 'Employee')
 	for employee in Employee.objects.all().order_by('id'):
 		worker_id = (employee.worker_id or '').strip() or None

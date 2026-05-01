@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Reusable kitchen designer UI component.
+ *
+ * These components support the planner flow with review widgets, subheaders, drawers, and guided controls.
+ */
+
 import { useEffect, useMemo, useRef } from 'react';
 
 import {
@@ -25,6 +31,7 @@ const viewBoxWidth = 860;
 const viewBoxHeight = 560;
 const viewBoxPadding = 110;
 
+/** Helper used by this module to manage normalise. */
 function normalise(point: SvgPoint) {
   const length = Math.sqrt(point.x * point.x + point.y * point.y) || 1;
   return {
@@ -33,6 +40,7 @@ function normalise(point: SvgPoint) {
   };
 }
 
+/** Helper used by this module to manage midpoint. */
 function midpoint(a: SvgPoint, b: SvgPoint) {
   return {
     x: (a.x + b.x) / 2,
@@ -40,6 +48,7 @@ function midpoint(a: SvgPoint, b: SvgPoint) {
   };
 }
 
+/** Renders the floor plan editor2 d component used by this module. */
 export default function FloorPlanEditor2D({
   room,
   activeWall,

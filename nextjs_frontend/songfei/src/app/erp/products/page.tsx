@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /erp/products route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import NextImage from 'next/image';
 import Link from 'next/link';
@@ -35,6 +41,7 @@ interface Product {
   is_new: boolean;
 }
 
+/** Renders the manage products component used by this module. */
 export default function ManageProducts() {
   const [rootCategories, setRootCategories] = useState<Category[]>([]);
   const [currentCategories, setCurrentCategories] = useState<Category[]>([]);
@@ -87,9 +94,11 @@ export default function ManageProducts() {
   const [success, setSuccess] = useState(false);
   const { showErrorPopup } = useErrorPopup();
 
+  /** Returns the error message for the current input. */
   const getErrorMessage = (err: unknown, fallback: string) =>
     err instanceof Error ? err.message : fallback;
 
+  /** Helper used by this module to manage convert image to jpeg or png. */
   const convertImageToJpegOrPng = async (file: File): Promise<File> => {
     if (file.type === 'image/jpeg' || file.type === 'image/png') {
       return file;
@@ -195,6 +204,7 @@ export default function ManageProducts() {
     }
   }, [fetchProducts, selectedCategorySlug]);
 
+  /** Handles the category select interaction for this component. */
   const handleCategorySelect = (category: Category) => {
     setSelectedPath([
       ...selectedPath,
@@ -217,6 +227,7 @@ export default function ManageProducts() {
     }
   };
 
+  /** Handles the back interaction for this component. */
   const handleBack = () => {
     if (selectedPath.length === 0) return;
     
@@ -239,6 +250,7 @@ export default function ManageProducts() {
     }
   };
 
+  /** Handles the create subcategory interaction for this component. */
   const handleCreateSubcategory = async () => {
     if (!newSubcategoryName.trim()) {
       const message = 'Subcategory name is required';
@@ -296,6 +308,7 @@ export default function ManageProducts() {
     }
   };
 
+  /** Handles the new category image change interaction for this component. */
   const handleNewCategoryImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -315,6 +328,7 @@ export default function ManageProducts() {
     }
   };
 
+  /** Handles the category image replace interaction for this component. */
   const handleCategoryImageReplace = async (file: File | null) => {
     if (selectedPath.length === 0) return;
 
@@ -368,6 +382,7 @@ export default function ManageProducts() {
     }
   };
 
+  /** Handles the image change interaction for this component. */
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -387,6 +402,7 @@ export default function ManageProducts() {
     }
   };
 
+  /** Handles the edit image change interaction for this component. */
   const handleEditImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -407,6 +423,7 @@ export default function ManageProducts() {
     }
   };
 
+  /** Helper used by this module to manage start edit product. */
   const startEditProduct = (product: Product) => {
     setEditingProduct(product);
     setEditForm({
@@ -426,6 +443,7 @@ export default function ManageProducts() {
     setEditError(null);
   };
 
+  /** Handles the edit cancel interaction for this component. */
   const handleEditCancel = () => {
     setEditingProduct(null);
     setEditError(null);
@@ -434,6 +452,7 @@ export default function ManageProducts() {
     setEditRemoveImage(false);
   };
 
+  /** Handles the edit submit interaction for this component. */
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -500,6 +519,7 @@ export default function ManageProducts() {
     }
   };
 
+  /** Handles the delete product interaction for this component. */
   const handleDeleteProduct = async (product: Product) => {
     const confirmed = window.confirm(`Delete ${product.name}? This cannot be undone.`);
     if (!confirmed) return;
@@ -529,12 +549,14 @@ export default function ManageProducts() {
     }
   };
 
+  /** Handles the product search interaction for this component. */
   const handleProductSearch = () => {
     if (selectedCategorySlug) {
       fetchProducts(selectedCategorySlug, productSearch);
     }
   };
 
+  /** Validates the product id before the workflow continues. */
   const validateProductId = async (productId: string): Promise<boolean> => {
     if (!productId.trim()) return true; // Empty is OK, will be validated on submit
     
@@ -548,6 +570,7 @@ export default function ManageProducts() {
     }
   };
 
+  /** Handles the submit interaction for this component. */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -639,6 +662,7 @@ export default function ManageProducts() {
     }
   };
 
+  /** Handles the add another interaction for this component. */
   const handleAddAnother = () => {
     setProductForm({
       product_id: '',

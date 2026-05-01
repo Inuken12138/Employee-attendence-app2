@@ -1,3 +1,11 @@
+/**
+ * Entry screen for the ERP people-operations area.
+ *
+ * This page does not own heavy logic. Instead, it explains the available people
+ * workflows and routes users to the deeper employee management screens.
+ */
+
+/** Presents links to department, employee-record, and attendance workflows. */
 export default function EmployeesPage() {
   return (
     <div>

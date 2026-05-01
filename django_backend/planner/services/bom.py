@@ -1,7 +1,16 @@
+"""Bill-of-material generation for a saved planner project version.
+
+The planner stores scene items as JSON snapshots. This helper converts that raw
+item list into aggregated purchase lines that can be reviewed and later copied
+into the commerce cart.
+"""
+
 from core.models import Product
 
 
 def build_project_bom(project_version):
+    """Aggregate placed planner items into cart-friendly BOM lines and a total."""
+
     snapshot = project_version.scene_snapshot or {}
     items = snapshot.get('items') or []
     product_ids = [item.get('productId') for item in items if item.get('productId')]

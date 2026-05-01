@@ -1,3 +1,5 @@
+"""Add workplace and face-profile models for the face-verification proof of concept."""
+
 from django.db import migrations, models
 import django.db.models.deletion
 

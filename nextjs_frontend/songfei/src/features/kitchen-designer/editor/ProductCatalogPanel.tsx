@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Editor-side kitchen designer component.
+ *
+ * Files in this folder render the planner workspace controls that let users inspect, edit, and price a room design.
+ */
+
 import { useEffect, useState } from 'react';
 
 import useErrorPopup from '@/app/hooks/useErrorPopup';
@@ -8,6 +14,7 @@ import { fetchPlannerCatalogProducts } from '../api/plannerApi';
 import { usePlannerStore } from '../state/plannerStore';
 import type { PlannerCatalogProduct } from '../types/planner';
 
+/** Renders the product catalog panel component used by this module. */
 export default function ProductCatalogPanel() {
   const { showErrorPopup } = useErrorPopup();
   const [loading, setLoading] = useState(true);

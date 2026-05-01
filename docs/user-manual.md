@@ -58,27 +58,30 @@ Use the employee module to create employees, maintain worker IDs, update salarie
 
 1. Open the Add New Employee panel.
 2. Enter the employee name.
-3. Enter the base salary.
-4. Enter the worker ID.
-5. Save the employee.
+3. Enter the worker ID.
+4. Save the employee.
+5. Open Salary Studio.
+6. Create a compensation profile with the monthly salary and any employee-specific payroll settings.
 
 Notes:
 
 1. Worker ID is mandatory for new employees.
 2. Worker ID should match the ID used by the attendance device export.
 3. Use the exact worker ID used in real attendance files. Do not invent temporary IDs unless you are deliberately correcting a legacy record and know what the attendance source uses.
+4. Monthly salary is not entered in the employee record. It is maintained in the compensation ledger.
 
 ### Edit an employee
 
 1. Find the employee in the directory table.
 2. Click Edit.
-3. Update the employee name, worker ID, salary, or status.
+3. Update the employee name, worker ID, department, or status.
 4. Save the changes.
 
 Important:
 
 1. Active employees should always have a worker ID.
 2. Inactive employees are excluded from payroll attendance matching.
+3. Salary changes and payroll package changes should be made in the compensation ledger, not in the employee record.
 
 ### Assign a roster
 
@@ -115,7 +118,7 @@ Before running payroll, confirm these items:
 
 1. All active employees exist in the employee directory.
 2. All active employees have the correct worker ID.
-3. Employee salaries and compensation profiles are up to date.
+3. Every employee who will be paid has an active compensation profile for the target month.
 4. The correct payroll policy exists and is active for the target month.
 5. Roster assignments are correct for staff who use rotating schedules.
 
@@ -189,7 +192,7 @@ In this view you can:
 
 1. Create or edit payroll policy versions.
 2. Activate the correct policy for the month.
-3. Create compensation profiles for employees.
+3. Create compensation profiles for employees. Compensation profiles are the payroll source of truth for monthly salary and employee-specific allowance settings.
 4. Add payroll adjustments such as manual bonuses, manual deductions, advances, tips, gardening, or other signed entries.
 5. Review carry-forward recovery balances created by prior correction runs.
 
@@ -199,6 +202,12 @@ Recommended order:
 2. Confirm compensation profiles.
 3. Add and approve payroll adjustments.
 4. Review any carry-forward balances that will reduce payable salary.
+
+Important:
+
+1. Social security allowance is a manual employer decision in the compensation profile. It is never enabled automatically by a date-based rule.
+2. Leave `Effective to` blank while the compensation package is still current.
+3. When pay changes or employment ends, set the old profile `Effective to` date to its last valid day, then start the next profile on the following day so history remains continuous.
 
 ### Step 7: Record project work and settle bonuses
 
@@ -408,14 +417,11 @@ Before you publish a product to the designer, you must have:
 
 **Important**: The complete category path (root → group → leaf) must be selected. This determines where the product appears in the kitchen designer's product drawer and who can find it. Choose a path that makes sense for the product's function.
 
-### Step 5: Configure product dimensions and movement
+### Step 5: Configure movement and placement rules
 
-1. Enter the product's physical dimensions in millimeters:
-   - **Width (mm)**: The width of the cabinet from left to right.
-   - **Depth (mm)**: The depth from front to back.
-   - **Height (mm)**: The height from bottom to top.
+1. Upload a correctly scaled `.glb` model. The planner now uses the model's native meter scale automatically when the product is inserted into the 3D scene.
 
-2. These dimensions are used to scale the 3D model and to calculate placement within the room.
+2. Do not enter manual width, depth, or height overrides for `.glb` products. Those manual size fields are no longer used for planner imports.
 
 3. If this product should be able to move vertically in the 3D planner (e.g., wall cabinets that can be positioned at different heights), check the "Allow vertical movement in 3D designer" checkbox.
 
@@ -425,7 +431,7 @@ Before you publish a product to the designer, you must have:
    - "Requires benchtop": Product must sit on a benchtop (e.g., sink, cooktop).
    - "Supports left/right end panel": Marks that this cabinet can have end panels attached.
 
-**Caution**: Dimension fields are mandatory for publication. Any missing or zero value will cause validation to fail with a warning. Double-check these values against your 3D model and physical product specifications.
+**Caution**: Validate the real scale in your `.glb` before publishing. If the model itself is authored at the wrong size, the planner will import that wrong size exactly as-is.
 
 ### Step 6: Enter pricing and rotation settings
 

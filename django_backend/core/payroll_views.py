@@ -1,3 +1,11 @@
+"""HTTP API layer for payroll, paid rest, construction bonus, and reporting.
+
+Where ``core.payroll_services`` performs the calculations, this module exposes
+those workflows as REST endpoints. It validates request shapes, chooses the
+right service function, translates common failures into HTTP responses, and
+serializes the resulting records back to the frontend.
+"""
+
 from datetime import date
 from decimal import Decimal
 
@@ -10,10 +18,12 @@ from rest_framework.views import APIView
 
 from .models import (
     AttendanceMonthlySummary,
+    AttendanceTimeBankEntry,
     ConstructionProject,
     ConstructionProjectAssignment,
     ConstructionProjectWorkLog,
     Employee,
+    EmployeeAttendanceWorkRuleProfile,
     EmployeeCompensationProfile,
     EmployeeLeaveRecord,
     EmployeePayrollAdjustment,
@@ -41,10 +51,12 @@ from .payroll_services import (
 )
 from .serializers import (
     AttendanceMonthlySummarySerializer,
+    AttendanceTimeBankEntrySerializer,
     ConstructionProjectAssignmentSerializer,
     ConstructionProjectSerializer,
     ConstructionProjectSettlementSerializer,
     ConstructionProjectWorkLogSerializer,
+    EmployeeAttendanceWorkRuleProfileSerializer,
     EmployeeCompensationProfileSerializer,
     EmployeePayrollAdjustmentSerializer,
     EmployeePayrollCarryForwardBalanceSerializer,
@@ -65,17 +77,23 @@ DAYS_QUANTUM = Decimal('0.01')
 
 
 def _bool_query_param(query_params, key):
+    """Interpret common truthy query-string values as booleans."""
+
     value = str(query_params.get(key, '')).strip().lower()
     return value in ('1', 'true', 'yes', 'y')
 
 
 def _request_user(request):
+    """Return the authenticated user or ``None`` for anonymous requests."""
+
     if getattr(request, 'user', None) and request.user.is_authenticated:
         return request.user
     return None
 
 
 def _parse_year_month(year_value, month_value):
+    """Parse a required year/month pair from request data or query params."""
+
     if year_value is None or month_value is None:
         raise ValueError('year and month are required.')
 
@@ -86,6 +104,8 @@ def _parse_year_month(year_value, month_value):
 
 
 def _parse_optional_year_month(query_params):
+    """Parse an optional year/month pair, returning ``(None, None)`` when absent."""
+
     year = query_params.get('year')
     month = query_params.get('month')
     if year is None and month is None:
@@ -94,10 +114,14 @@ def _parse_optional_year_month(query_params):
 
 
 def _day_quantity(value):
+    """Quantize a value to the day precision used by paid-rest balances."""
+
     return Decimal(str(value or '0')).quantize(DAYS_QUANTUM)
 
 
 def _resolve_payroll_run_for_preview(request, explicit_run_id=None):
+    """Resolve which payroll run should drive a preview or report request."""
+
     run_id = explicit_run_id or request.query_params.get('run_id') or request.data.get('run_id')
     if run_id is not None:
         payroll_run = PayrollRun.objects.select_related('policy_used').filter(pk=run_id).first()
@@ -114,6 +138,8 @@ def _resolve_payroll_run_for_preview(request, explicit_run_id=None):
 
 
 def _serialize_run_brief(payroll_run):
+    """Return a concise summary payload for payroll-run list endpoints."""
+
     monthly_summary = getattr(payroll_run, 'monthly_summary', None)
     return {
         'id': payroll_run.id,
@@ -131,6 +157,8 @@ def _serialize_run_brief(payroll_run):
 
 
 def _paid_rest_shift_targets(paid_rest_request):
+    """Return which attendance shifts a paid-rest request covers."""
+
     linked_shift = str(paid_rest_request.linked_attendance_shift or '').strip()
     if linked_shift in ('morning', 'afternoon'):
         return [linked_shift]
@@ -138,6 +166,8 @@ def _paid_rest_shift_targets(paid_rest_request):
 
 
 def _leave_shift_targets(leave_record):
+    """Return which attendance shifts a leave record covers."""
+
     linked_shift = str(leave_record.linked_attendance_shift or '').strip()
     if linked_shift in ('morning', 'afternoon'):
         return [linked_shift]
@@ -145,6 +175,8 @@ def _leave_shift_targets(leave_record):
 
 
 def _stamp_paid_rest_request_status(paid_rest_request, request, status_value, coverage_snapshot=None):
+    """Apply workflow timestamps and actors to a paid-rest request."""
+
     user = _request_user(request)
     now = timezone.now()
 
@@ -172,6 +204,8 @@ def _stamp_paid_rest_request_status(paid_rest_request, request, status_value, co
 
 
 def _refresh_paid_rest_balances_for_request(paid_rest_request):
+    """Rebuild the employee's paid-rest balance after a request changes."""
+
     rebuild_paid_rest_balances(
         paid_rest_request.rest_date.year,
         paid_rest_request.rest_date.month,
@@ -180,6 +214,8 @@ def _refresh_paid_rest_balances_for_request(paid_rest_request):
 
 
 def _has_approved_leave_overlap(employee, target_date, shift_targets):
+    """Return whether approved leave already covers the requested shifts."""
+
     approved_leave_records = EmployeeLeaveRecord.objects.filter(
         employee=employee,
         leave_date=target_date,
@@ -193,6 +229,8 @@ def _has_approved_leave_overlap(employee, target_date, shift_targets):
 
 
 def _has_approved_paid_rest_overlap(employee, target_date, shift_targets, exclude_request_id=None):
+    """Return whether approved paid rest already covers the requested shifts."""
+
     approved_requests = EmployeePaidRestRequest.objects.filter(
         employee=employee,
         rest_date=target_date,
@@ -209,6 +247,8 @@ def _has_approved_paid_rest_overlap(employee, target_date, shift_targets, exclud
 
 
 def _employee_scheduled_for_shift(employee, target_date, shift_key, policy):
+    """Return whether the employee is rostered to work the given shift."""
+
     roster_day = _resolve_employee_roster_day(employee, target_date, policy)
     if roster_day.get('is_working') is not True:
         return False
@@ -216,6 +256,8 @@ def _employee_scheduled_for_shift(employee, target_date, shift_key, policy):
 
 
 def _validate_paid_rest_request_for_approval(paid_rest_request):
+    """Enforce balance, overlap, and coverage rules before approval."""
+
     employee = paid_rest_request.employee
     if employee is None or not employee.is_active:
         raise ValidationError('Paid rest can only be approved for an active employee.')
@@ -311,6 +353,8 @@ def _validate_paid_rest_request_for_approval(paid_rest_request):
 
 @transaction.atomic
 def _activate_policy(policy):
+    """Mark one payroll policy active and deactivate all others."""
+
     PayrollPolicy.objects.exclude(pk=policy.pk).update(is_active=False)
     policy.is_active = True
     policy.status = 'active'
@@ -321,6 +365,8 @@ def _activate_policy(policy):
 
 @transaction.atomic
 def _archive_policy(policy):
+    """Archive a payroll policy and remove its active flag."""
+
     policy.is_active = False
     policy.status = 'archived'
     policy.archived_at = timezone.now()
@@ -329,6 +375,8 @@ def _archive_policy(policy):
 
 
 class PayrollPoliciesView(APIView):
+    """List payroll policies or create a new policy version."""
+
     def get(self, request):
         year = request.query_params.get('year')
         month = request.query_params.get('month')
@@ -360,6 +408,8 @@ class PayrollPoliciesView(APIView):
 
 
 class PayrollPolicyActiveView(APIView):
+    """Return the active payroll policy for a requested or current month."""
+
     def get(self, request):
         year = request.query_params.get('year')
         month = request.query_params.get('month')
@@ -376,6 +426,8 @@ class PayrollPolicyActiveView(APIView):
 
 
 class PayrollPolicyDetailView(APIView):
+    """Read, update, or delete a single payroll policy record."""
+
     def get(self, request, pk):
         policy = PayrollPolicy.objects.select_related('cloned_from_policy').filter(pk=pk).first()
         if policy is None:
@@ -414,6 +466,8 @@ class PayrollPolicyDetailView(APIView):
 
 
 class PayrollPolicyActivateView(APIView):
+    """Explicitly activate one payroll policy."""
+
     def post(self, request, pk):
         policy = PayrollPolicy.objects.filter(pk=pk).first()
         if policy is None:
@@ -423,6 +477,8 @@ class PayrollPolicyActivateView(APIView):
 
 
 class PayrollPolicyArchiveView(APIView):
+    """Archive one payroll policy."""
+
     def post(self, request, pk):
         policy = PayrollPolicy.objects.filter(pk=pk).first()
         if policy is None:
@@ -432,6 +488,8 @@ class PayrollPolicyArchiveView(APIView):
 
 
 class PayrollPolicyCloneView(APIView):
+    """Clone an existing payroll policy into a new version."""
+
     def post(self, request, pk):
         source_policy = PayrollPolicy.objects.filter(pk=pk).first()
         if source_policy is None:
@@ -470,6 +528,8 @@ class PayrollPolicyCloneView(APIView):
 
 
 class PayrollCompensationProfilesView(APIView):
+    """List or create employee compensation ledger entries."""
+
     def get(self, request):
         queryset = EmployeeCompensationProfile.objects.select_related('employee', 'payroll_policy').all()
         employee_id = request.query_params.get('employee_id')
@@ -496,6 +556,8 @@ class PayrollCompensationProfilesView(APIView):
 
 
 class PayrollCompensationProfileDetailView(APIView):
+    """Update one employee compensation profile."""
+
     def patch(self, request, pk):
         profile = EmployeeCompensationProfile.objects.filter(pk=pk).first()
         if profile is None:
@@ -507,7 +569,71 @@ class PayrollCompensationProfileDetailView(APIView):
         return Response(EmployeeCompensationProfileSerializer(profile).data)
 
 
+class PayrollAttendanceWorkRuleProfilesView(APIView):
+    """List or create effective-dated attendance work-rule profiles."""
+
+    def get(self, request):
+        queryset = EmployeeAttendanceWorkRuleProfile.objects.select_related('employee').all()
+        employee_id = request.query_params.get('employee_id')
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+
+        if _bool_query_param(request.query_params, 'current_only'):
+            year = request.query_params.get('year')
+            month = request.query_params.get('month')
+            target_date = date(int(year), int(month), 1) if year and month else timezone.localdate()
+            queryset = queryset.filter(effective_from__lte=target_date).filter(
+                Q(effective_to__isnull=True) | Q(effective_to__gte=target_date)
+            )
+
+        serializer = EmployeeAttendanceWorkRuleProfileSerializer(queryset.order_by('employee_id', '-effective_from', '-id'), many=True)
+        return Response({'records': serializer.data})
+
+    def post(self, request):
+        serializer = EmployeeAttendanceWorkRuleProfileSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        profile = serializer.save()
+        return Response(EmployeeAttendanceWorkRuleProfileSerializer(profile).data, status=201)
+
+
+class PayrollAttendanceWorkRuleProfileDetailView(APIView):
+    """Update one attendance work-rule profile."""
+
+    def patch(self, request, pk):
+        profile = EmployeeAttendanceWorkRuleProfile.objects.filter(pk=pk).first()
+        if profile is None:
+            return Response({'error': 'Attendance work-rule profile not found.'}, status=404)
+        serializer = EmployeeAttendanceWorkRuleProfileSerializer(profile, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        profile = serializer.save()
+        return Response(EmployeeAttendanceWorkRuleProfileSerializer(profile).data)
+
+
+class PayrollAttendanceTimeBankEntriesView(APIView):
+    """List time-bank ledger entries with basic filtering."""
+
+    def get(self, request):
+        queryset = AttendanceTimeBankEntry.objects.select_related('employee', 'payroll_run').all()
+        employee_id = request.query_params.get('employee_id')
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        if year:
+            queryset = queryset.filter(entry_date__year=year)
+        if month:
+            queryset = queryset.filter(entry_date__month=month)
+
+        serializer = AttendanceTimeBankEntrySerializer(queryset.order_by('entry_date', 'employee_id', 'id'), many=True)
+        return Response({'records': serializer.data})
+
+
 class PayrollPaidRestRequestsView(APIView):
+    """List or create paid-rest requests."""
+
     def get(self, request):
         try:
             year, month = _parse_optional_year_month(request.query_params)
@@ -553,6 +679,8 @@ class PayrollPaidRestRequestsView(APIView):
 
 
 class PayrollPaidRestRequestDetailView(APIView):
+    """Read, update, or delete one paid-rest request."""
+
     def get(self, request, pk):
         paid_rest_request = EmployeePaidRestRequest.objects.select_related('employee', 'department', 'submitted_by', 'decision_by').filter(pk=pk).first()
         if paid_rest_request is None:
@@ -595,6 +723,8 @@ class PayrollPaidRestRequestDetailView(APIView):
 
 
 class PayrollPaidRestRequestSubmitView(APIView):
+    """Move a paid-rest request into the submitted state."""
+
     def post(self, request, pk):
         paid_rest_request = EmployeePaidRestRequest.objects.filter(pk=pk).first()
         if paid_rest_request is None:
@@ -606,6 +736,8 @@ class PayrollPaidRestRequestSubmitView(APIView):
 
 
 class PayrollPaidRestRequestApproveView(APIView):
+    """Approve a paid-rest request after coverage validation."""
+
     def post(self, request, pk):
         paid_rest_request = EmployeePaidRestRequest.objects.filter(pk=pk).first()
         if paid_rest_request is None:
@@ -625,6 +757,8 @@ class PayrollPaidRestRequestApproveView(APIView):
 
 
 class PayrollPaidRestRequestRejectView(APIView):
+    """Reject a paid-rest request and refresh balances."""
+
     def post(self, request, pk):
         paid_rest_request = EmployeePaidRestRequest.objects.filter(pk=pk).first()
         if paid_rest_request is None:
@@ -641,6 +775,8 @@ class PayrollPaidRestRequestRejectView(APIView):
 
 
 class PayrollPaidRestBalancesView(APIView):
+    """Rebuild and list monthly paid-rest balance snapshots."""
+
     def get(self, request):
         year = request.query_params.get('year')
         month = request.query_params.get('month')
@@ -675,6 +811,8 @@ class PayrollPaidRestBalancesView(APIView):
 
 
 class PayrollAttendanceSummariesView(APIView):
+    """List monthly attendance summaries and optionally rebuild them."""
+
     def get(self, request):
         year = request.query_params.get('year')
         month = request.query_params.get('month')
@@ -703,6 +841,8 @@ class PayrollAttendanceSummariesView(APIView):
 
 
 class PayrollMonthlySummariesView(APIView):
+    """List recent run-level payroll summaries for trend views."""
+
     def get(self, request):
         try:
             months = int(request.query_params.get('months', 12))
@@ -726,6 +866,8 @@ class PayrollMonthlySummariesView(APIView):
 
 
 class PayrollAdjustmentsView(APIView):
+    """List or create manual payroll adjustments."""
+
     def get(self, request):
         queryset = EmployeePayrollAdjustment.objects.select_related('employee', 'created_by', 'approved_by').all()
         year = request.query_params.get('year')
@@ -760,6 +902,8 @@ class PayrollAdjustmentsView(APIView):
 
 
 class PayrollAdjustmentDetailView(APIView):
+    """Update one manual payroll adjustment."""
+
     def patch(self, request, pk):
         adjustment = EmployeePayrollAdjustment.objects.filter(pk=pk).first()
         if adjustment is None:
@@ -776,8 +920,18 @@ class PayrollAdjustmentDetailView(APIView):
             adjustment.save(update_fields=['approved_at', 'approved_by', 'updated_at'])
         return Response(EmployeePayrollAdjustmentSerializer(adjustment).data)
 
+    def delete(self, request, pk):
+        adjustment = EmployeePayrollAdjustment.objects.filter(pk=pk).first()
+        if adjustment is None:
+            return Response({'error': 'Payroll adjustment not found.'}, status=404)
+
+        adjustment.delete()
+        return Response(status=204)
+
 
 class PayrollAdjustmentApproveView(APIView):
+    """Mark a payroll adjustment as approved."""
+
     def post(self, request, pk):
         adjustment = EmployeePayrollAdjustment.objects.filter(pk=pk).first()
         if adjustment is None:
@@ -790,6 +944,8 @@ class PayrollAdjustmentApproveView(APIView):
 
 
 class ConstructionProjectsView(APIView):
+    """List or create construction projects used for labor-pool settlement."""
+
     def get(self, request):
         queryset = ConstructionProject.objects.prefetch_related('assignments__employee', 'settlements__employee').all()
         status_value = request.query_params.get('status')
@@ -807,6 +963,8 @@ class ConstructionProjectsView(APIView):
 
 
 class ConstructionProjectDetailView(APIView):
+    """Read or update one construction project."""
+
     def get(self, request, pk):
         project = ConstructionProject.objects.prefetch_related('assignments__employee', 'settlements__employee').filter(pk=pk).first()
         if project is None:
@@ -825,6 +983,8 @@ class ConstructionProjectDetailView(APIView):
 
 
 class ConstructionProjectAssignmentsView(APIView):
+    """List or create employee assignments for a construction project."""
+
     def get(self, request, project_id):
         queryset = ConstructionProjectAssignment.objects.select_related('employee', 'project').filter(project_id=project_id)
         serializer = ConstructionProjectAssignmentSerializer(queryset.order_by('employee__name', 'employee_id'), many=True)
@@ -843,6 +1003,8 @@ class ConstructionProjectAssignmentsView(APIView):
 
 
 class ConstructionProjectAssignmentDetailView(APIView):
+    """Update or delete one construction project assignment."""
+
     def patch(self, request, pk):
         assignment = ConstructionProjectAssignment.objects.filter(pk=pk).first()
         if assignment is None:
@@ -862,6 +1024,8 @@ class ConstructionProjectAssignmentDetailView(APIView):
 
 
 class ConstructionProjectWorkLogsView(APIView):
+    """List or create labor work logs for a construction project."""
+
     def get(self, request, project_id):
         queryset = ConstructionProjectWorkLog.objects.select_related('employee', 'project', 'created_by').filter(project_id=project_id)
         employee_id = request.query_params.get('employee_id')
@@ -883,6 +1047,8 @@ class ConstructionProjectWorkLogsView(APIView):
 
 
 class ConstructionProjectWorkLogDetailView(APIView):
+    """Update or delete one construction work log."""
+
     def patch(self, request, pk):
         work_log = ConstructionProjectWorkLog.objects.filter(pk=pk).first()
         if work_log is None:
@@ -902,6 +1068,8 @@ class ConstructionProjectWorkLogDetailView(APIView):
 
 
 class ConstructionProjectSettleView(APIView):
+    """Run labor-pool settlement for a construction project."""
+
     def post(self, request, pk):
         project = ConstructionProject.objects.prefetch_related('assignments__employee', 'work_logs__employee').filter(pk=pk).first()
         if project is None:
@@ -931,6 +1099,8 @@ class ConstructionProjectSettleView(APIView):
 
 
 class PayrollRunsView(APIView):
+    """List payroll runs or create a new run."""
+
     def get(self, request):
         queryset = PayrollRun.objects.select_related('policy_used').prefetch_related('monthly_summary').all()
         year = request.query_params.get('year')
@@ -980,10 +1150,14 @@ class PayrollRunsView(APIView):
 
 
 class PayrollRunGenerateView(PayrollRunsView):
+    """Alias endpoint that reuses payroll-run creation behavior."""
+
     pass
 
 
 class PayrollRunDetailView(APIView):
+    """Read one payroll run or update its notes."""
+
     def get(self, request, pk):
         payroll_run = PayrollRun.objects.select_related(
             'policy_used',
@@ -1014,6 +1188,8 @@ class PayrollRunDetailView(APIView):
 
 
 class PayrollRunApproveView(APIView):
+    """Approve a payroll run."""
+
     def post(self, request, pk):
         payroll_run = PayrollRun.objects.filter(pk=pk).first()
         if payroll_run is None:
@@ -1024,6 +1200,8 @@ class PayrollRunApproveView(APIView):
 
 
 class PayrollRunLockView(APIView):
+    """Lock a payroll run and persist its ledger side effects."""
+
     def post(self, request, pk):
         payroll_run = PayrollRun.objects.filter(pk=pk).first()
         if payroll_run is None:
@@ -1034,6 +1212,8 @@ class PayrollRunLockView(APIView):
 
 
 class PayrollRunCreateCorrectionView(APIView):
+    """Create a correction payroll run based on an existing run."""
+
     def post(self, request, pk):
         source_run = PayrollRun.objects.select_related('policy_used').filter(pk=pk).first()
         if source_run is None:
@@ -1068,6 +1248,8 @@ class PayrollRunCreateCorrectionView(APIView):
 
 
 class PayrollRunDeltasView(APIView):
+    """List correction deltas for a payroll run."""
+
     def get(self, request, pk):
         payroll_run = PayrollRun.objects.filter(pk=pk).first()
         if payroll_run is None:
@@ -1078,6 +1260,8 @@ class PayrollRunDeltasView(APIView):
 
 
 class PayrollRunReportsView(APIView):
+    """List or generate report artifacts for a payroll run."""
+
     def get(self, request, pk):
         payroll_run = PayrollRun.objects.filter(pk=pk).first()
         if payroll_run is None:
@@ -1114,6 +1298,8 @@ class PayrollRunReportsView(APIView):
 
 
 class PayrollCarryForwardBalancesView(APIView):
+    """List outstanding payroll carry-forward balances."""
+
     def get(self, request):
         queryset = EmployeePayrollCarryForwardBalance.objects.select_related('employee', 'origin_correction_delta').all()
         employee_id = request.query_params.get('employee_id')
@@ -1127,6 +1313,8 @@ class PayrollCarryForwardBalancesView(APIView):
 
 
 class PayrollWorkforceReportPreviewView(APIView):
+    """Return the JSON preview payload for the workforce payroll report."""
+
     def get(self, request):
         try:
             payroll_run = _resolve_payroll_run_for_preview(request)
@@ -1139,6 +1327,8 @@ class PayrollWorkforceReportPreviewView(APIView):
 
 
 class PayrollEmployeeReportPreviewView(APIView):
+    """Return the JSON preview payload for one employee payroll report."""
+
     def get(self, request):
         employee_id = request.query_params.get('employee') or request.query_params.get('employee_id')
         if not employee_id:
@@ -1166,6 +1356,8 @@ class PayrollEmployeeReportPreviewView(APIView):
 
 
 class PayrollReportsGenerateView(APIView):
+    """Generate payroll reports using the same preview selection rules."""
+
     def post(self, request):
         try:
             payroll_run = _resolve_payroll_run_for_preview(request, explicit_run_id=request.data.get('run_id'))

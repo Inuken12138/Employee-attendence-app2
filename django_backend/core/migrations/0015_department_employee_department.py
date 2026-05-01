@@ -1,3 +1,5 @@
+"""Add departments and optional employee department assignment."""
+
 from django.db import migrations, models
 
 

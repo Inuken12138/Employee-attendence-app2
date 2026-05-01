@@ -1,6 +1,14 @@
+"""Serializer layer for planner ERP and customer-facing APIs.
+
+These serializers shape planner models into stable JSON contracts, validate
+incoming ERP edits, and expose derived data such as asset URLs, composite
+schemas, version counts, and published catalog metadata.
+"""
+
 from rest_framework import serializers
 
 from core.models import Product
+from planner.composite_schema import build_profile_composite_schema, validate_composite_schema_values
 from planner.models import (
     KitchenCartBundle,
     KitchenDesignerAssetValidation,
@@ -15,6 +23,8 @@ from planner.taxonomy import planner_path_is_valid
 
 
 class KitchenProductionAssetSerializer(serializers.ModelSerializer):
+    """Serialize production-side files linked to a planner profile."""
+
     file_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -37,6 +47,8 @@ class KitchenProductionAssetSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
     def get_file_url(self, obj):
+        """Return an absolute file URL when request context is available."""
+
         if obj.file:
             request = self.context.get('request')
             if request:
@@ -46,6 +58,8 @@ class KitchenProductionAssetSerializer(serializers.ModelSerializer):
 
 
 class KitchenDesignerAssetValidationSerializer(serializers.ModelSerializer):
+    """Serialize one planner asset validation run."""
+
     validated_by_username = serializers.CharField(source='validated_by.username', read_only=True)
 
     class Meta:
@@ -65,11 +79,14 @@ class KitchenDesignerAssetValidationSerializer(serializers.ModelSerializer):
 
 
 class KitchenDesignerProductProfileSerializer(serializers.ModelSerializer):
+    """Serialize and validate ERP-side planner product settings."""
+
     product_name = serializers.CharField(source='product.name', read_only=True)
     product_code = serializers.CharField(source='product.product_id', read_only=True)
     glb_file_url = serializers.SerializerMethodField()
     latest_validation = serializers.SerializerMethodField()
     production_assets = serializers.SerializerMethodField()
+    composite_schema = serializers.SerializerMethodField()
 
     class Meta:
         model = KitchenDesignerProductProfile
@@ -110,26 +127,44 @@ class KitchenDesignerProductProfileSerializer(serializers.ModelSerializer):
             'updated_at',
             'latest_validation',
             'production_assets',
+            'composite_schema',
         ]
         read_only_fields = ['created_at', 'updated_at', 'updated_by']
 
     def validate_product(self, value):
+        """Fail fast if the referenced catalog product no longer exists."""
+
         if not Product.objects.filter(pk=value.pk).exists():
             raise serializers.ValidationError('Product not found.')
         return value
 
     def validate(self, attrs):
+        """Validate taxonomy and composite-schema consistency before saving."""
+
         instance = getattr(self, 'instance', None)
         root_category = attrs.get('planner_root_category', getattr(instance, 'planner_root_category', '')) or ''
         group_category = attrs.get('planner_group_category', getattr(instance, 'planner_group_category', '')) or ''
         leaf_category = attrs.get('planner_leaf_category', getattr(instance, 'planner_leaf_category', '')) or ''
+        interaction_schema = attrs.get('interaction_schema', getattr(instance, 'interaction_schema', {}))
+        constraint_schema = attrs.get('constraint_schema', getattr(instance, 'constraint_schema', {}))
+        compatibility_schema = attrs.get('compatibility_schema', getattr(instance, 'compatibility_schema', {}))
 
         if not planner_path_is_valid(root_category, group_category, leaf_category):
             raise serializers.ValidationError('Planner category path is invalid for the current hardcoded planner taxonomy.')
 
+        composite_errors = validate_composite_schema_values(
+            interaction_schema=interaction_schema,
+            constraint_schema=constraint_schema,
+            compatibility_schema=compatibility_schema,
+        )
+        if composite_errors:
+            raise serializers.ValidationError(composite_errors)
+
         return attrs
 
     def get_glb_file_url(self, obj):
+        """Return an absolute GLB URL when request context is available."""
+
         if obj.glb_file:
             request = self.context.get('request')
             if request:
@@ -138,17 +173,28 @@ class KitchenDesignerProductProfileSerializer(serializers.ModelSerializer):
         return None
 
     def get_latest_validation(self, obj):
+        """Expose the most recent asset validation attached to this profile."""
+
         validation = obj.asset_validations.order_by('-validated_at').first()
         if not validation:
             return None
         return KitchenDesignerAssetValidationSerializer(validation).data
 
     def get_production_assets(self, obj):
+        """Serialize all production assets currently attached to the profile."""
+
         assets = obj.production_assets.all()
         return KitchenProductionAssetSerializer(assets, many=True, context=self.context).data
 
+    def get_composite_schema(self, obj):
+        """Expose the merged composite schema the frontend actually consumes."""
+
+        return build_profile_composite_schema(obj)
+
 
 class PlannerCatalogProductSerializer(serializers.ModelSerializer):
+    """Serialize only planner-published product fields needed by the designer UI."""
+
     image_url = serializers.SerializerMethodField()
     planner_profile_id = serializers.IntegerField(source='kitchen_designer_profile.id', read_only=True)
     planner_role = serializers.CharField(source='kitchen_designer_profile.planner_role', read_only=True)
@@ -160,6 +206,7 @@ class PlannerCatalogProductSerializer(serializers.ModelSerializer):
     height_mm = serializers.IntegerField(source='kitchen_designer_profile.height_mm', read_only=True)
     allow_vertical_movement = serializers.BooleanField(source='kitchen_designer_profile.allow_vertical_movement', read_only=True)
     glb_file_url = serializers.SerializerMethodField()
+    composite_schema = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -183,9 +230,12 @@ class PlannerCatalogProductSerializer(serializers.ModelSerializer):
             'height_mm',
             'allow_vertical_movement',
             'glb_file_url',
+            'composite_schema',
         ]
 
     def get_image_url(self, obj):
+        """Return an absolute catalog image URL when possible."""
+
         if obj.image:
             request = self.context.get('request')
             if request:
@@ -194,6 +244,8 @@ class PlannerCatalogProductSerializer(serializers.ModelSerializer):
         return None
 
     def get_glb_file_url(self, obj):
+        """Expose the planner GLB URL through the published catalog response."""
+
         profile = getattr(obj, 'kitchen_designer_profile', None)
         if profile and profile.glb_file:
             request = self.context.get('request')
@@ -202,8 +254,18 @@ class PlannerCatalogProductSerializer(serializers.ModelSerializer):
             return profile.glb_file.url
         return None
 
+    def get_composite_schema(self, obj):
+        """Return a normalized composite schema even if no profile exists."""
+
+        profile = getattr(obj, 'kitchen_designer_profile', None)
+        if not profile:
+            return build_profile_composite_schema(type('Profile', (), {})())
+        return build_profile_composite_schema(profile)
+
 
 class KitchenProjectVersionSerializer(serializers.ModelSerializer):
+    """Serialize one saved project snapshot."""
+
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
 
     class Meta:
@@ -225,6 +287,8 @@ class KitchenProjectVersionSerializer(serializers.ModelSerializer):
 
 
 class KitchenProjectSerializer(serializers.ModelSerializer):
+    """Serialize a planner project together with current-version metadata."""
+
     owner_username = serializers.CharField(source='owner.username', read_only=True)
     current_version = KitchenProjectVersionSerializer(read_only=True)
     version_count = serializers.SerializerMethodField()
@@ -261,9 +325,13 @@ class KitchenProjectSerializer(serializers.ModelSerializer):
         ]
 
     def get_version_count(self, obj):
+        """Return how many saved versions belong to the project."""
+
         return obj.versions.count()
 
     def get_latest_version_number(self, obj):
+        """Expose the newest version number even if ``current_version`` is unset."""
+
         if obj.current_version:
             return obj.current_version.version_number
         latest = obj.versions.order_by('-version_number').first()
@@ -271,6 +339,8 @@ class KitchenProjectSerializer(serializers.ModelSerializer):
 
 
 class KitchenValidationRunSerializer(serializers.ModelSerializer):
+    """Serialize one planner validation result."""
+
     class Meta:
         model = KitchenValidationRun
         fields = [
@@ -286,6 +356,8 @@ class KitchenValidationRunSerializer(serializers.ModelSerializer):
 
 
 class KitchenCartBundleSerializer(serializers.ModelSerializer):
+    """Serialize the planner-to-cart bundle created during add-to-bag."""
+
     project_slug = serializers.CharField(source='project.slug', read_only=True)
 
     class Meta:
@@ -304,6 +376,8 @@ class KitchenCartBundleSerializer(serializers.ModelSerializer):
 
 
 class KitchenProjectDuplicationSerializer(serializers.ModelSerializer):
+    """Serialize audit information about duplicated planner projects."""
+
     duplicated_by_username = serializers.CharField(source='duplicated_by.username', read_only=True)
 
     class Meta:

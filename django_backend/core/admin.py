@@ -34,13 +34,18 @@ How to extend this configuration:
    @admin.register(MainModel)
    class MainModelAdmin(admin.ModelAdmin):
        inlines = [RelatedModelInline]
+
+Minimal Django admin registrations for core business models.
+
+Unlike the more tailored admin setup in the ``planner`` and ``commerce`` apps,
+this file currently uses basic registration. It is still useful for onboarding
+because it shows which core models the team wants visible in the admin UI.
 """
 
 from django.contrib import admin
 from .models import User, Employee, InventoryItem, Product, Category, CustomerProfile, Review, Purchase
 
 
-# Register your models here.
 admin.site.register(User)
 admin.site.register(Employee)
 admin.site.register(InventoryItem)

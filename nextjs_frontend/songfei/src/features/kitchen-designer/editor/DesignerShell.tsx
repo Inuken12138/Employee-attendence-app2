@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Editor-side kitchen designer component.
+ *
+ * Files in this folder render the planner workspace controls that let users inspect, edit, and price a room design.
+ */
+
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -26,6 +32,7 @@ import PlannerSubheader from '../components/PlannerSubheader';
 import RoomScene3D from '../components/RoomScene3D';
 import RoomShapePicker from '../components/RoomShapePicker';
 
+/** Renders the designer shell component used by this module. */
 export default function DesignerShell({ projectId }: { projectId: string }) {
   const router = useRouter();
   const { showErrorPopup } = useErrorPopup();
@@ -99,6 +106,7 @@ export default function DesignerShell({ projectId }: { projectId: string }) {
     void loadProject();
   }, [loadProject]);
 
+  /** Handles the save project interaction for this component. */
   const handleSaveProject = async () => {
     if (!isAuthenticated) {
       router.push(`/login?redirect=${encodeURIComponent(`/kitchen-designer/${projectId}`)}`);
@@ -128,6 +136,7 @@ export default function DesignerShell({ projectId }: { projectId: string }) {
     }
   };
 
+  /** Handles the create share link interaction for this component. */
   const handleCreateShareLink = async () => {
     if (!isPersistedProject) {
       showErrorPopup('Only saved projects can generate share links.');
@@ -147,6 +156,7 @@ export default function DesignerShell({ projectId }: { projectId: string }) {
     }
   };
 
+  /** Handles the stage selection interaction for this component. */
   const handleStageSelection = (nextStage: typeof stage) => {
     if (!canNavigateToPlannerStage(stage, nextStage, room)) {
       showErrorPopup('Complete the room dimensions before moving forward in the planner flow.');
@@ -156,6 +166,7 @@ export default function DesignerShell({ projectId }: { projectId: string }) {
     setStage(nextStage);
   };
 
+  /** Handles the continue interaction for this component. */
   const handleContinue = () => {
     const nextStage = getNextPlannerStage(stage);
 
@@ -166,6 +177,7 @@ export default function DesignerShell({ projectId }: { projectId: string }) {
     handleStageSelection(nextStage);
   };
 
+  /** Helper used by this module to manage render stage content. */
   const renderStageContent = () => {
     if (stage === 'define-space') {
       return (

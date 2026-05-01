@@ -1,9 +1,17 @@
+/**
+ * Kitchen designer utility helpers.
+ *
+ * The functions here transform planner data into reusable derived structures for saving, review, or synchronization flows.
+ */
 import { defaultPlannerRoom } from '../state/plannerStore';
 import type { PlannerNode, PlannerProjectSnapshot, PlannerRoom } from '../types/planner';
 
+const PLANNER_SNAPSHOT_SCHEMA_VERSION = 2;
+
+/** Creates the empty planner snapshot used by this module. */
 export function createEmptyPlannerSnapshot(projectId?: string | null): PlannerProjectSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: PLANNER_SNAPSHOT_SCHEMA_VERSION,
     room: { ...defaultPlannerRoom },
     items: [],
     metadata: {
@@ -13,6 +21,7 @@ export function createEmptyPlannerSnapshot(projectId?: string | null): PlannerPr
   };
 }
 
+/** Builds the planner snapshot used by this module. */
 export function buildPlannerSnapshot({
   projectId,
   room,
@@ -23,7 +32,7 @@ export function buildPlannerSnapshot({
   nodes: PlannerNode[];
 }): PlannerProjectSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: PLANNER_SNAPSHOT_SCHEMA_VERSION,
     room: { ...room },
     items: nodes,
     metadata: {

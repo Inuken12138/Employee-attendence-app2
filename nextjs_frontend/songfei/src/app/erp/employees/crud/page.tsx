@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /erp/employees/crud route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import Link from 'next/link';
 import {
   startTransition,
@@ -36,7 +42,7 @@ interface Department {
 interface Employee {
   id: number;
   name: string;
-  base_salary: number;
+  base_salary: number | null;
   worker_id: string | null;
   department?: number | null;
   department_name?: string | null;
@@ -70,7 +76,6 @@ interface RosterTemplate {
 
 interface NewEmployeeState {
   name: string;
-  salary: string;
   workerId: string;
   departmentId: string;
 }
@@ -85,7 +90,6 @@ interface EmployeeFormState {
 
 interface EmployeeRequiredFields {
   name: string;
-  salary: string;
   workerId: string;
 }
 
@@ -155,7 +159,12 @@ const DEFAULT_SHIFT_TIMES: ShiftTimes = {
 };
 
 const numberFormatter = new Intl.NumberFormat('en-US');
+/** Formats the employee salary value into display-ready text. */
+const formatEmployeeSalaryValue = (salary: number | null | undefined) => (
+  salary === null || salary === undefined ? '' : String(salary)
+);
 
+/** Extracts the api error from a larger response or payload. */
 const extractApiError = (data: unknown, fallbackMessage: string) => {
   if (!data || typeof data !== 'object') {
     return fallbackMessage;
@@ -177,6 +186,7 @@ const extractApiError = (data: unknown, fallbackMessage: string) => {
   return fallbackMessage;
 };
 
+/** Normalizes the time value into the shape expected by this module. */
 const normalizeTimeValue = (value: string) => {
   const match = String(value || '').trim().match(/^(\d{1,2}):(\d{1,2})$/);
   if (!match) {
@@ -192,31 +202,39 @@ const normalizeTimeValue = (value: string) => {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 };
 
+/** Splits the time value into smaller pieces for further processing. */
 const splitTimeValue = (value: string) => {
   const normalizedValue = normalizeTimeValue(value) || '00:00';
   const [hour, minute] = normalizedValue.split(':');
   return { hour, minute };
 };
 
+/** Adjusts the time by minutes by the requested amount. */
 const adjustTimeByMinutes = (value: string, delta: number) => {
   const normalizedValue = normalizeTimeValue(value) || '00:00';
   const [hourText, minuteText] = normalizedValue.split(':');
   const totalMinutes = Number.parseInt(hourText, 10) * 60 + Number.parseInt(minuteText, 10);
+  /** Helper used by this module to manage next minutes. */
   const nextMinutes = (totalMinutes + delta + 1440) % 1440;
   const nextHour = Math.floor(nextMinutes / 60);
   const nextMinute = nextMinutes % 60;
   return `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`;
 };
 
+/** Formats the shift preview into display-ready text. */
 const formatShiftPreview = (value: string) => normalizeTimeValue(value) || '--:--';
 const REQUIRED_FIELD_SUFFIX = ' *';
 
+/** Clones the default times so later edits do not mutate the original value. */
 const cloneDefaultTimes = (): ShiftTimes => ({ ...DEFAULT_SHIFT_TIMES });
 
+/** Returns the today iso for the current input. */
 const getTodayIso = () => new Date().toISOString().slice(0, 10);
 
+/** Returns the day key for the current input. */
 const getDayKey = (weekIndex: number, dayOfWeek: number) => `${weekIndex}-${dayOfWeek}`;
 
+/** Sorts the employees into a stable display or processing order. */
 const sortEmployees = (employees: Employee[]) => {
   return [...employees].sort((left, right) => {
     if (left.is_active !== right.is_active) {
@@ -230,10 +248,12 @@ const sortEmployees = (employees: Employee[]) => {
   });
 };
 
+/** Sorts the roster templates into a stable display or processing order. */
 const sortRosterTemplates = (templates: RosterTemplate[]) => {
   return [...templates].sort((left, right) => left.name.localeCompare(right.name));
 };
 
+/** Sorts the departments into a stable display or processing order. */
 const sortDepartments = (departments: Department[]) => {
   return [...departments].sort((left, right) => {
     if (left.is_active !== right.is_active) {
@@ -243,6 +263,7 @@ const sortDepartments = (departments: Department[]) => {
   });
 };
 
+/** Builds a blank schedule value used by this module. */
 const buildBlankSchedule = (cycleLengthWeeks: number, defaultTimes = cloneDefaultTimes()) => {
   const schedule: RosterDay[] = [];
 
@@ -263,6 +284,7 @@ const buildBlankSchedule = (cycleLengthWeeks: number, defaultTimes = cloneDefaul
   return schedule;
 };
 
+/** Normalizes the roster schedule into the shape expected by this module. */
 const normalizeRosterSchedule = (cycleLengthWeeks: number, schedule: RosterDay[], defaultTimes: ShiftTimes) => {
   const scheduleMap = new Map<string, RosterDay>();
 
@@ -294,6 +316,7 @@ const normalizeRosterSchedule = (cycleLengthWeeks: number, schedule: RosterDay[]
   });
 };
 
+/** Helper used by this module to manage apply defaults to working days. */
 const applyDefaultsToWorkingDays = (schedule: RosterDay[], defaultTimes: ShiftTimes) => {
   return schedule.map((entry) => {
     if (!entry.is_working) {
@@ -310,6 +333,7 @@ const applyDefaultsToWorkingDays = (schedule: RosterDay[], defaultTimes: ShiftTi
   });
 };
 
+/** Builds the preset builder used by this module. */
 const buildPresetBuilder = (preset: RosterPreset, employeeName: string) => {
   const defaultTimes = cloneDefaultTimes();
   const baseName = employeeName ? `${employeeName} roster` : 'Roster template';
@@ -363,6 +387,7 @@ const buildPresetBuilder = (preset: RosterPreset, employeeName: string) => {
   };
 };
 
+/** Creates the editor state used by this module. */
 const createEditorState = (employee: Employee): EmployeeEditorState => ({
   employeeId: employee.id,
   activeTab: 'details',
@@ -372,7 +397,7 @@ const createEditorState = (employee: Employee): EmployeeEditorState => ({
   confirmDelete: false,
   form: {
     name: employee.name,
-    salary: String(employee.base_salary),
+    salary: formatEmployeeSalaryValue(employee.base_salary),
     workerId: employee.worker_id || '',
     departmentId: employee.department ? String(employee.department) : '',
     isActive: employee.is_active,
@@ -380,21 +405,14 @@ const createEditorState = (employee: Employee): EmployeeEditorState => ({
   builder: buildPresetBuilder('standard', employee.name),
 });
 
+/** Returns the required field warnings for the current input. */
 const getRequiredFieldWarnings = (fields: EmployeeRequiredFields) => {
   const warnings: string[] = [];
   const trimmedName = fields.name.trim();
   const trimmedWorkerId = fields.workerId.trim();
-  const salaryText = String(fields.salary || '').trim();
-  const parsedSalary = Number.parseFloat(salaryText);
 
   if (!trimmedName) {
     warnings.push('Employee Name is required.');
-  }
-
-  if (!salaryText) {
-    warnings.push('Base Salary is required.');
-  } else if (Number.isNaN(parsedSalary) || parsedSalary <= 0) {
-    warnings.push('Base Salary must be greater than 0.');
   }
 
   if (!trimmedWorkerId) {
@@ -404,6 +422,7 @@ const getRequiredFieldWarnings = (fields: EmployeeRequiredFields) => {
   return warnings;
 };
 
+/** Formats the roster day summary into display-ready text. */
 const formatRosterDaySummary = (day: RosterDay) => {
   if (!day.is_working) {
     return 'Rest day';
@@ -412,6 +431,7 @@ const formatRosterDaySummary = (day: RosterDay) => {
   return `${day.morning_in}-${day.morning_out} / ${day.afternoon_in}-${day.afternoon_out}`;
 };
 
+/** Returns whether using default times. */
 const isUsingDefaultTimes = (day: RosterDay, defaultTimes: ShiftTimes) => {
   return (
     day.morning_in === defaultTimes.morningIn &&
@@ -421,6 +441,7 @@ const isUsingDefaultTimes = (day: RosterDay, defaultTimes: ShiftTimes) => {
   );
 };
 
+/** Renders the compact time input component used by this module. */
 function CompactTimeInput({ label, value, onChange }: CompactTimeInputProps) {
   const { hour, minute } = splitTimeValue(value);
 
@@ -455,6 +476,7 @@ function CompactTimeInput({ label, value, onChange }: CompactTimeInputProps) {
   );
 }
 
+/** Renders the roster template card component used by this module. */
 function RosterTemplateCard({ template, selected, isAssigned, onSelect }: RosterTemplateCardProps) {
   return (
     <button
@@ -481,6 +503,7 @@ function RosterTemplateCard({ template, selected, isAssigned, onSelect }: Roster
   );
 }
 
+/** Renders the roster day card component used by this module. */
 function RosterDayCard({
   day,
   defaultTimes,
@@ -529,11 +552,12 @@ function RosterDayCard({
   );
 }
 
+/** Renders the employee crud page. */
 export default function EmployeeCrudPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [rosterTemplates, setRosterTemplates] = useState<RosterTemplate[]>([]);
-  const [newEmployee, setNewEmployee] = useState<NewEmployeeState>({ name: '', salary: '', workerId: '', departmentId: '' });
+  const [newEmployee, setNewEmployee] = useState<NewEmployeeState>({ name: '', workerId: '', departmentId: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
@@ -643,7 +667,7 @@ export default function EmployeeCrudPage() {
           ...previous,
           form: {
             name: updatedEmployee.name,
-            salary: String(updatedEmployee.base_salary),
+            salary: formatEmployeeSalaryValue(updatedEmployee.base_salary),
             workerId: updatedEmployee.worker_id || '',
             departmentId: updatedEmployee.department ? String(updatedEmployee.department) : '',
             isActive: updatedEmployee.is_active,
@@ -656,6 +680,7 @@ export default function EmployeeCrudPage() {
     });
   }, []);
 
+  /** Creates the employee used by this module. */
   const createEmployee = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -666,7 +691,6 @@ export default function EmployeeCrudPage() {
 
     const trimmedName = newEmployee.name.trim();
     const trimmedWorkerId = newEmployee.workerId.trim();
-    const parsedSalary = Number.parseFloat(newEmployee.salary);
     const departmentId = newEmployee.departmentId ? Number.parseInt(newEmployee.departmentId, 10) : null;
 
     try {
@@ -676,7 +700,6 @@ export default function EmployeeCrudPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: trimmedName,
-          base_salary: parsedSalary,
           worker_id: trimmedWorkerId,
           department: departmentId,
           is_active: true,
@@ -692,7 +715,7 @@ export default function EmployeeCrudPage() {
       startTransition(() => {
         setEmployees((previous) => sortEmployees([...previous, data as Employee]));
       });
-      setNewEmployee({ name: '', salary: '', workerId: '', departmentId: '' });
+      setNewEmployee({ name: '', workerId: '', departmentId: '' });
     } catch {
       showErrorPopup('Failed to create employee.');
     } finally {
@@ -700,10 +723,12 @@ export default function EmployeeCrudPage() {
     }
   };
 
+  /** Helper used by this module to manage open editor. */
   const openEditor = (employee: Employee) => {
     setActiveEditor(createEditorState(employee));
   };
 
+  /** Updates the editor and returns the next value. */
   const updateEditor = (updater: (previous: EmployeeEditorState) => EmployeeEditorState) => {
     setActiveEditor((previous) => {
       if (!previous) {
@@ -713,6 +738,7 @@ export default function EmployeeCrudPage() {
     });
   };
 
+  /** Helper used by this module to manage save employee details. */
   const saveEmployeeDetails = async () => {
     if (!activeEditor) {
       return;
@@ -723,7 +749,6 @@ export default function EmployeeCrudPage() {
       return;
     }
 
-    const parsedSalary = Number.parseFloat(activeEditor.form.salary);
     const trimmedWorkerId = activeEditor.form.workerId.trim();
     const departmentId = activeEditor.form.departmentId ? Number.parseInt(activeEditor.form.departmentId, 10) : null;
 
@@ -734,7 +759,6 @@ export default function EmployeeCrudPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: activeEditor.form.name.trim(),
-          base_salary: parsedSalary,
           worker_id: trimmedWorkerId || null,
           department: departmentId,
           is_active: activeEditor.form.isActive,
@@ -755,6 +779,7 @@ export default function EmployeeCrudPage() {
     }
   };
 
+  /** Helper used by this module to manage assign roster template. */
   const assignRosterTemplate = async (templateId: number) => {
     if (!activeEditor) {
       return;
@@ -794,6 +819,7 @@ export default function EmployeeCrudPage() {
     }
   };
 
+  /** Helper used by this module to manage clear roster assignment. */
   const clearRosterAssignment = async () => {
     if (!activeEditor) {
       return;
@@ -823,6 +849,7 @@ export default function EmployeeCrudPage() {
     }
   };
 
+  /** Creates the template and assign used by this module. */
   const createTemplateAndAssign = async () => {
     if (!activeEditor) {
       return;
@@ -871,6 +898,7 @@ export default function EmployeeCrudPage() {
     }
   };
 
+  /** Helper used by this module to manage delete employee. */
   const deleteEmployee = async () => {
     if (!activeEditor) {
       return;
@@ -939,16 +967,13 @@ export default function EmployeeCrudPage() {
               />
             </div>
             <div className="form-field">
-              <label>Base Salary (Kip){REQUIRED_FIELD_SUFFIX}</label>
+              <label>Monthly Salary</label>
               <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={newEmployee.salary}
-                onChange={(event) => setNewEmployee((previous) => ({ ...previous, salary: event.target.value }))}
+                type="text"
+                value=""
                 className="input"
-                placeholder="e.g. 1200000"
-                required
+                placeholder="Set in Salary Studio > Compensation Ledger after employee creation"
+                readOnly
               />
             </div>
             <div className="form-field">
@@ -993,7 +1018,7 @@ export default function EmployeeCrudPage() {
             <div className="employee-note-panel">
               <div className="payroll-time-label">Payroll allowances are configured in Salary Studio</div>
               <p className="muted" style={{ marginTop: '0.45rem' }}>
-                Rice allowance is set in Payroll Policies because it is a shared rule. Social security amount and trial-worker eligibility are set in Compensation Profiles.
+                Monthly salary and discretionary social security eligibility are configured in Compensation Profiles. Rice allowance is usually set in Payroll Policies unless a profile override is needed.
               </p>
               <div className="employee-modal-actions" style={{ marginTop: '1rem' }}>
                 <Link href="/erp/employees/departments" className="btn btn-outline">
@@ -1074,7 +1099,7 @@ export default function EmployeeCrudPage() {
                   <th>Name</th>
                   <th>Worker ID</th>
                   <th>Department</th>
-                  <th>Salary</th>
+                  <th>Monthly Salary</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -1086,7 +1111,7 @@ export default function EmployeeCrudPage() {
                     <td>{employee.name}</td>
                     <td>{employee.worker_id || 'Missing'}</td>
                     <td>{employee.department_name || 'Unassigned'}</td>
-                    <td>{numberFormatter.format(employee.base_salary)}</td>
+                    <td>{employee.base_salary === null ? 'Set in Compensation Ledger' : numberFormatter.format(employee.base_salary)}</td>
                     <td>
                       <span className="pill" style={{ color: employee.is_active ? '#9cf0b9' : '#f7b07f' }}>
                         {employee.is_active ? 'Active' : 'Inactive'}
@@ -1163,17 +1188,13 @@ export default function EmployeeCrudPage() {
                   />
                 </div>
                 <div className="form-field">
-                  <label>Base Salary (Kip){REQUIRED_FIELD_SUFFIX}</label>
+                  <label>Monthly Salary (from Compensation Ledger)</label>
                   <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
+                    type="text"
                     className="input"
                     value={activeEditor.form.salary}
-                    onChange={(event) => updateEditor((previous) => ({
-                      ...previous,
-                      form: { ...previous.form, salary: event.target.value },
-                    }))}
+                    readOnly
+                    placeholder="No active compensation profile for today"
                   />
                 </div>
 
@@ -1258,7 +1279,7 @@ export default function EmployeeCrudPage() {
                 <div className="employee-note-panel">
                   <div className="payroll-time-label">Rice allowance and social security</div>
                   <p className="muted" style={{ marginTop: '0.45rem' }}>
-                    Rice allowance is configured in Payroll Policies. Social security amount and trial-worker eligibility are configured in Compensation Profiles.
+                    Rice allowance comes from Payroll Policies unless the compensation ledger overrides it. Social security eligibility is a manual employer decision in Compensation Profiles.
                   </p>
                   <div className="employee-modal-actions" style={{ marginTop: '1rem' }}>
                     <Link href="/erp/salary?view=adjustments" className="btn btn-outline">

@@ -82,6 +82,7 @@ How to extend:
 """
 
 from django.db import models
+from django.db.models import Q
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
@@ -93,6 +94,8 @@ import uuid
 # Create your models here.
 
 class User(AbstractUser):
+    """Application user with a lightweight role field for coarse access decisions."""
+
     ROLE_CHOICES = (
         ('manager', 'Manager'),
         ('employee', 'Employee'),
@@ -102,6 +105,8 @@ class User(AbstractUser):
 
 
 class Department(models.Model):
+    """Organizational unit used for employee grouping and paid-rest rules."""
+
     name = models.CharField(max_length=120, unique=True)
     code = models.CharField(max_length=40, null=True, blank=True, unique=True)
     description = models.TextField(blank=True)
@@ -121,9 +126,11 @@ class Department(models.Model):
         return self.name
 
 class Employee(models.Model):
+    """Primary HR record used by attendance, payroll, and construction modules."""
+
     name = models.CharField(max_length=100)
     #position = models.CharField(max_length=100)
-    base_salary = models.FloatField()
+    base_salary = models.FloatField(default=0)
     worker_id = models.CharField(max_length=50, null=True)
     department = models.ForeignKey(
         Department,
@@ -143,8 +150,36 @@ class Employee(models.Model):
     def __str__(self):
         return self.name
 
+    def active_compensation_profile(self, target_date):
+        """Return the compensation ledger entry active on the given date."""
+
+        return self.compensation_profiles.filter(
+            effective_from__lte=target_date,
+        ).filter(
+            Q(effective_to__isnull=True) | Q(effective_to__gte=target_date)
+        ).select_related('payroll_policy').order_by('-effective_from', '-id').first()
+
+    def active_attendance_work_rule_profile(self, target_date):
+        """Return the attendance work-rule profile active on the given date."""
+
+        return self.attendance_work_rule_profiles.filter(
+            effective_from__lte=target_date,
+        ).filter(
+            Q(effective_to__isnull=True) | Q(effective_to__gte=target_date)
+        ).order_by('-effective_from', '-id').first()
+
+    def active_attendance_work_rule(self, target_date):
+        """Return the effective attendance work rule, defaulting to standard."""
+
+        profile = self.active_attendance_work_rule_profile(target_date)
+        if profile is None:
+            return EmployeeAttendanceWorkRuleProfile.WORK_RULE_STANDARD
+        return profile.work_rule
+
 
 class AttendanceRecord(models.Model):
+    """One month of attendance data in either draft or finalized form."""
+
     STATUS_CHOICES = (
         ('draft', 'Draft'),
         ('final', 'Final'),
@@ -166,6 +201,8 @@ class AttendanceRecord(models.Model):
 
 
 class AttendanceRecordEmployee(models.Model):
+    """Employee-specific slice inside a monthly attendance record."""
+
     record = models.ForeignKey(AttendanceRecord, on_delete=models.CASCADE, related_name='employees')
     employee = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True)
     employee_name = models.CharField(max_length=120, blank=True)
@@ -180,6 +217,8 @@ class AttendanceRecordEmployee(models.Model):
 
 
 class AttendanceShift(models.Model):
+    """Per-day attendance outcome with separate morning and afternoon states."""
+
     STATUS_CHOICES = (
         ('present', 'Present'),
         ('absent', 'Absent'),
@@ -208,6 +247,8 @@ class AttendanceShift(models.Model):
 
 
 class RosterTemplate(models.Model):
+    """Reusable repeating schedule template assigned to employees."""
+
     name = models.CharField(max_length=120, unique=True)
     description = models.TextField(blank=True)
     cycle_length_weeks = models.PositiveSmallIntegerField(default=1)
@@ -224,6 +265,8 @@ class RosterTemplate(models.Model):
 
 
 class EmployeeRosterAssignment(models.Model):
+    """Attach one roster template to one employee from an effective date onward."""
+
     employee = models.OneToOneField(Employee, on_delete=models.CASCADE, related_name='roster_assignment')
     template = models.ForeignKey(RosterTemplate, on_delete=models.SET_NULL, null=True, blank=True, related_name='assignments')
     effective_start_date = models.DateField(default=timezone.localdate)
@@ -239,6 +282,8 @@ class EmployeeRosterAssignment(models.Model):
 
 
 class AttendanceOvertimeDecision(models.Model):
+    """Manager decision record for overtime detected from attendance data."""
+
     SHIFT_CHOICES = (
         ('morning', 'Morning'),
         ('afternoon', 'Afternoon'),
@@ -283,6 +328,8 @@ class AttendanceOvertimeDecision(models.Model):
 
 
 class AttendanceOvertimeDecisionSegment(models.Model):
+    """Fine-grained split of one overtime block into approved and denied pieces."""
+
     STATUS_CHOICES = (
         ('approved', 'Approved'),
         ('denied', 'Denied'),
@@ -307,6 +354,8 @@ class AttendanceOvertimeDecisionSegment(models.Model):
 
 
 class EmployeeLeaveRecord(models.Model):
+    """Employee leave request and approval record tied to a specific date."""
+
     SUBMISSION_STATUS_CHOICES = (
         ('draft', 'Draft'),
         ('submitted', 'Submitted'),
@@ -366,6 +415,8 @@ class EmployeeLeaveRecord(models.Model):
 
 
 class EmployeePaidRestRequest(models.Model):
+    """Department-governed paid-rest request for shop-floor employees."""
+
     SUBMISSION_STATUS_CHOICES = (
         ('draft', 'Draft'),
         ('submitted', 'Submitted'),
@@ -427,6 +478,8 @@ class EmployeePaidRestRequest(models.Model):
 
 
 class EmployeePaidRestMonthlyBalance(models.Model):
+    """Monthly paid-rest balance snapshot rebuilt from approvals and department rules."""
+
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='paid_rest_balances')
     department = models.ForeignKey(
         Department,
@@ -455,6 +508,8 @@ class EmployeePaidRestMonthlyBalance(models.Model):
 
 
 class PayrollPolicy(models.Model):
+    """Versioned payroll policy that defines the calculation rules for a period."""
+
     STATUS_CHOICES = (
         ('draft', 'Draft'),
         ('active', 'Active'),
@@ -477,6 +532,7 @@ class PayrollPolicy(models.Model):
     normal_work_hours_per_day = models.DecimalField(max_digits=5, decimal_places=2, default=8)
     salary_days_per_month = models.PositiveSmallIntegerField(default=30)
     overtime_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=2.00)
+    overtime_grace_minutes = models.PositiveIntegerField(default=0)
     late_grace_minutes = models.PositiveIntegerField(null=True, blank=True)
     rounding_unit_amount = models.PositiveIntegerField(default=1000)
     rounding_rule = models.CharField(max_length=40, choices=ROUNDING_RULE_CHOICES, default='nearest_thousand')
@@ -504,12 +560,13 @@ class PayrollPolicy(models.Model):
 
 
 class EmployeeCompensationProfile(models.Model):
+    """Versioned salary and allowance ledger for an employee."""
+
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='compensation_profiles')
     monthly_salary = models.DecimalField(max_digits=14, decimal_places=2)
     rice_allowance_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     social_security_allowance_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     eligible_for_social_security = models.BooleanField(default=True)
-    trial_period_end_date = models.DateField(null=True, blank=True)
     payroll_policy = models.ForeignKey(
         PayrollPolicy,
         on_delete=models.SET_NULL,
@@ -529,7 +586,34 @@ class EmployeeCompensationProfile(models.Model):
         return f'EmployeeCompensationProfile({self.employee_id}, {self.effective_from})'
 
 
+class EmployeeAttendanceWorkRuleProfile(models.Model):
+    """Versioned attendance-rule ledger for special handling such as driver time bank."""
+
+    WORK_RULE_STANDARD = 'standard'
+    WORK_RULE_DRIVER_TIME_BANK = 'driver_time_bank'
+    WORK_RULE_CHOICES = (
+        (WORK_RULE_STANDARD, 'Standard attendance rule'),
+        (WORK_RULE_DRIVER_TIME_BANK, 'Driver attendance rule with time bank'),
+    )
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='attendance_work_rule_profiles')
+    work_rule = models.CharField(max_length=40, choices=WORK_RULE_CHOICES, default=WORK_RULE_STANDARD)
+    effective_from = models.DateField()
+    effective_to = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['employee_id', '-effective_from', '-id']
+
+    def __str__(self):
+        return f'EmployeeAttendanceWorkRuleProfile({self.employee_id}, {self.work_rule}, {self.effective_from})'
+
+
 class AttendanceMonthlySummary(models.Model):
+    """Derived monthly attendance totals used as payroll input."""
+
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='attendance_monthly_summaries')
     year = models.PositiveIntegerField()
     month = models.PositiveSmallIntegerField()
@@ -538,7 +622,9 @@ class AttendanceMonthlySummary(models.Model):
     scheduled_minutes_total = models.PositiveIntegerField(default=0)
     worked_minutes_total = models.PositiveIntegerField(default=0)
     late_minutes_total = models.PositiveIntegerField(default=0)
+    early_departure_minutes_total = models.PositiveIntegerField(default=0)
     absent_minutes_total = models.PositiveIntegerField(default=0)
+    time_bank_minutes_total = models.PositiveIntegerField(default=0)
     paid_rest_minutes_total = models.PositiveIntegerField(default=0)
     approved_leave_minutes_total = models.PositiveIntegerField(default=0)
     unapproved_leave_minutes_total = models.PositiveIntegerField(default=0)
@@ -558,6 +644,8 @@ class AttendanceMonthlySummary(models.Model):
 
 
 class EmployeePayrollAdjustment(models.Model):
+    """Manual bonus or deduction entry reviewed as part of payroll."""
+
     ADJUSTMENT_TYPE_CHOICES = (
         ('advance', 'Wage advance'),
         ('tips', 'Tips and extra jobs'),
@@ -606,6 +694,8 @@ class EmployeePayrollAdjustment(models.Model):
 
 
 class ConstructionProject(models.Model):
+    """Construction or installation project used for labor-pool bonus settlement."""
+
     STATUS_CHOICES = (
         ('planned', 'Planned'),
         ('active', 'Active'),
@@ -633,6 +723,8 @@ class ConstructionProject(models.Model):
 
 
 class ConstructionProjectAssignment(models.Model):
+    """Assign an employee to a construction project and optionally weight the share."""
+
     project = models.ForeignKey(ConstructionProject, on_delete=models.CASCADE, related_name='assignments')
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='project_assignments')
     role = models.CharField(max_length=120, blank=True)
@@ -651,6 +743,8 @@ class ConstructionProjectAssignment(models.Model):
 
 
 class ConstructionProjectWorkLog(models.Model):
+    """Recorded labor contribution for one employee on one construction date."""
+
     QUANTITY_UNIT_CHOICES = (
         ('day', 'Day'),
         ('half_day', 'Half day'),
@@ -691,6 +785,8 @@ class ConstructionProjectWorkLog(models.Model):
 
 
 class PayrollRun(models.Model):
+    """Payroll execution snapshot for a specific month and run type."""
+
     RUN_TYPE_CHOICES = (
         ('normal', 'Normal'),
         ('correction', 'Correction'),
@@ -758,17 +854,27 @@ class PayrollRun(models.Model):
 
 
 class PayrollRunEmployee(models.Model):
+    """Employee-level calculation output inside a payroll run."""
+
     payroll_run = models.ForeignKey(PayrollRun, on_delete=models.CASCADE, related_name='employees')
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='payroll_run_entries')
     monthly_base_wage_amount = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     attendance_bonus_amount = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     late_minutes_total = models.PositiveIntegerField(default=0)
+    early_departure_minutes_total = models.PositiveIntegerField(default=0)
     absent_minutes_total = models.PositiveIntegerField(default=0)
+    time_bank_minutes_total = models.PositiveIntegerField(default=0)
+    opening_time_bank_minutes_total = models.PositiveIntegerField(default=0)
+    settled_time_bank_minutes_total = models.PositiveIntegerField(default=0)
+    closing_time_bank_minutes_total = models.PositiveIntegerField(default=0)
     paid_rest_minutes_total = models.PositiveIntegerField(default=0)
     approved_leave_minutes_total = models.PositiveIntegerField(default=0)
     unapproved_leave_minutes_total = models.PositiveIntegerField(default=0)
     approved_ot_minutes_total = models.PositiveIntegerField(default=0)
+    approved_ot_offset_minutes_total = models.PositiveIntegerField(default=0)
+    payable_ot_minutes_total = models.PositiveIntegerField(default=0)
     denied_ot_minutes_total = models.PositiveIntegerField(default=0)
+    deductible_minutes_total = models.PositiveIntegerField(default=0)
     deduction_amount = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     overtime_pay_amount = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     project_bonus_amount = models.DecimalField(max_digits=16, decimal_places=2, default=0)
@@ -791,6 +897,8 @@ class PayrollRunEmployee(models.Model):
 
 
 class PayrollComponent(models.Model):
+    """One named component line contributing to an employee payroll result."""
+
     payroll_run_employee = models.ForeignKey(PayrollRunEmployee, on_delete=models.CASCADE, related_name='components')
     component_type = models.CharField(max_length=50)
     code = models.CharField(max_length=60)
@@ -811,6 +919,8 @@ class PayrollComponent(models.Model):
 
 
 class ConstructionProjectSettlement(models.Model):
+    """Stored result of distributing one construction project's labor pool."""
+
     project = models.ForeignKey(ConstructionProject, on_delete=models.CASCADE, related_name='settlements')
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='project_settlements')
     employee_project_reserved_hours = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -834,6 +944,8 @@ class ConstructionProjectSettlement(models.Model):
 
 
 class PayrollMonthlySummary(models.Model):
+    """Company-level totals aggregated from a payroll run."""
+
     payroll_run = models.OneToOneField(PayrollRun, on_delete=models.CASCADE, related_name='monthly_summary')
     headcount_paid = models.PositiveIntegerField(default=0)
     total_monthly_base_wages = models.DecimalField(max_digits=18, decimal_places=2, default=0)
@@ -847,10 +959,14 @@ class PayrollMonthlySummary(models.Model):
     total_rounding_adjustment_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     total_gross_payable_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     total_late_minutes = models.PositiveIntegerField(default=0)
+    total_early_departure_minutes = models.PositiveIntegerField(default=0)
     total_absent_minutes = models.PositiveIntegerField(default=0)
+    total_time_bank_minutes = models.PositiveIntegerField(default=0)
     total_leave_minutes = models.PositiveIntegerField(default=0)
     total_paid_rest_minutes = models.PositiveIntegerField(default=0)
     total_approved_ot_minutes = models.PositiveIntegerField(default=0)
+    total_approved_ot_offset_minutes = models.PositiveIntegerField(default=0)
+    total_payable_ot_minutes = models.PositiveIntegerField(default=0)
     trend_snapshot_json = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -863,6 +979,8 @@ class PayrollMonthlySummary(models.Model):
 
 
 class PayrollReportArtifact(models.Model):
+    """Generated report file belonging to a payroll run."""
+
     REPORT_TYPE_CHOICES = (
         ('employee', 'Employee'),
         ('workforce_management', 'Workforce management'),
@@ -888,7 +1006,46 @@ class PayrollReportArtifact(models.Model):
         return f'PayrollReportArtifact({self.payroll_run_id}, {self.report_type}, {self.format})'
 
 
+class AttendanceTimeBankEntry(models.Model):
+    """Ledger entry that tracks attendance minutes carried as time-bank debt or settlement."""
+
+    ENTRY_TYPE_EARLY_DEPARTURE_DEBT = 'early_departure_debt'
+    ENTRY_TYPE_OT_SETTLEMENT = 'ot_settlement'
+    ENTRY_TYPE_CHOICES = (
+        (ENTRY_TYPE_EARLY_DEPARTURE_DEBT, 'Early departure debt'),
+        (ENTRY_TYPE_OT_SETTLEMENT, 'Approved OT settlement'),
+    )
+    SHIFT_CHOICES = (
+        ('morning', 'Morning'),
+        ('afternoon', 'Afternoon'),
+    )
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='attendance_time_bank_entries')
+    entry_type = models.CharField(max_length=40, choices=ENTRY_TYPE_CHOICES)
+    entry_date = models.DateField()
+    attendance_shift = models.CharField(max_length=20, choices=SHIFT_CHOICES, blank=True)
+    minutes_delta = models.IntegerField(default=0)
+    payroll_run = models.ForeignKey(
+        'PayrollRun',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='time_bank_entries',
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['entry_date', 'employee_id', 'id']
+
+    def __str__(self):
+        return f'AttendanceTimeBankEntry({self.employee_id}, {self.entry_type}, {self.entry_date}, {self.minutes_delta})'
+
+
 class PayrollCorrectionDelta(models.Model):
+    """Difference record between a correction payroll run and the run it fixes."""
+
     DELTA_DIRECTION_CHOICES = (
         ('employer_owes_employee', 'Employer owes employee'),
         ('employee_owes_employer', 'Employee owes employer'),
@@ -922,6 +1079,8 @@ class PayrollCorrectionDelta(models.Model):
 
 
 class EmployeePayrollCarryForwardBalance(models.Model):
+    """Outstanding recovery amount carried into later payroll runs."""
+
     DIRECTION_CHOICES = (
         ('recovery_from_employee', 'Recovery from employee'),
     )
@@ -954,6 +1113,8 @@ class EmployeePayrollCarryForwardBalance(models.Model):
         return f'EmployeePayrollCarryForwardBalance({self.employee_id}, {self.remaining_amount})'
 
 class InventoryItem(models.Model):
+    """Stock record for non-planner inventory tracked in the ERP."""
+
     item_code = models.CharField(max_length=50, blank=True)
     name = models.CharField(max_length=100)
     image_url = models.URLField(blank=True)
@@ -964,6 +1125,8 @@ class InventoryItem(models.Model):
     last_updated = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+        """Delete replaced images and optimize the uploaded image after saving."""
+
         if self.pk:
             try:
                 old = InventoryItem.objects.get(pk=self.pk)
@@ -987,11 +1150,15 @@ class InventoryItem(models.Model):
                 pass
 
     def delete(self, *args, **kwargs):
+        """Remove the stored image file when the inventory item is deleted."""
+
         if self.image and self.image.path and os.path.isfile(self.image.path):
             os.remove(self.image.path)
         super().delete(*args, **kwargs)
 
 class Category(models.Model):
+    """Hierarchical storefront category used for product browsing."""
+
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children')
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=250, unique=True)
@@ -1006,6 +1173,8 @@ class Category(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
+        """Ensure a unique slug and optimize uploaded category images."""
+
         if not self.slug:
             base_slug = slugify(self.name)
             slug = base_slug
@@ -1040,7 +1209,7 @@ class Category(models.Model):
                 pass
 
     def get_breadcrumb(self):
-        """Return breadcrumb path as list of categories from root to self"""
+        """Return the category path from the tree root down to this node."""
         breadcrumb = []
         current = self
         while current:
@@ -1049,7 +1218,7 @@ class Category(models.Model):
         return breadcrumb
 
     def get_all_descendants(self):
-        """Get all descendant categories recursively"""
+        """Return all nested child categories below this category."""
         descendants = []
         for child in self.children.all():
             descendants.append(child)
@@ -1057,7 +1226,7 @@ class Category(models.Model):
         return descendants
 
     def get_level(self):
-        """Get the depth level of this category (1 = root, 2 = child of root, etc.)"""
+        """Return this category's depth within the category tree."""
         level = 1
         current = self.parent
         while current:
@@ -1066,12 +1235,16 @@ class Category(models.Model):
         return level
 
     def delete(self, *args, **kwargs):
+        """Delete the stored image file when the category is removed."""
+
         if self.image and getattr(self.image, 'path', None) and os.path.isfile(self.image.path):
             os.remove(self.image.path)
         super().delete(*args, **kwargs)
 
 
 class Product(models.Model):
+    """Sellable catalog product used by the storefront and planner integrations."""
+
     product_id = models.CharField(max_length=50, unique=True)
     name = models.CharField(max_length=100)
     price = models.FloatField()
@@ -1091,17 +1264,23 @@ class Product(models.Model):
         return f"{self.name} ({self.product_id})"
 
     def save(self, *args, **kwargs):
+        """Generate a default slug from name and product code before saving."""
+
         if not self.slug:
             self.slug = f"{slugify(self.name)}-{self.product_id}"
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
+        """Remove the stored product image file when the product is deleted."""
+
         if self.image and self.image.path and os.path.isfile(self.image.path):
             os.remove(self.image.path)
         super().delete(*args, **kwargs)
 
 
 class CustomerProfile(models.Model):
+    """Optional customer-specific details linked to an authenticated user."""
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='customer_profile')
     phone = models.CharField(max_length=40, blank=True)
     loyalty_id = models.CharField(max_length=80, blank=True)
@@ -1112,6 +1291,8 @@ class CustomerProfile(models.Model):
 
 
 class Purchase(models.Model):
+    """Simple purchase history record used for review verification and order history."""
+
     STATUS_CHOICES = (
         ('pending', 'Pending'),
         ('completed', 'Completed'),
@@ -1130,6 +1311,8 @@ class Purchase(models.Model):
 
 
 class Review(models.Model):
+    """Customer product review with optional verified-purchase flag."""
+
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='reviews')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews')
     rating = models.PositiveSmallIntegerField()
@@ -1146,6 +1329,8 @@ class Review(models.Model):
 
 
 class Workplace(models.Model):
+    """Allowed physical work location used by face verification distance checks."""
+
     name = models.CharField(max_length=100)
     latitude = models.FloatField()
     longitude = models.FloatField()
@@ -1156,6 +1341,8 @@ class Workplace(models.Model):
 
 
 class EmployeeFaceProfile(models.Model):
+    """Stored reference face image used for employee face verification."""
+
     employee = models.OneToOneField(Employee, on_delete=models.CASCADE)
     face_image = models.ImageField(upload_to='face_profiles/')
     enrolled_at = models.DateTimeField(auto_now_add=True)

@@ -1,3 +1,8 @@
+/**
+ * 3D scene component for the kitchen designer.
+ *
+ * These files turn planner state into visual geometry, camera behavior, and lighting inside the design canvas.
+ */
 import type { PlannerRoom } from '../types/planner';
 
 const MM_TO_SCENE = 0.001;
@@ -5,6 +10,7 @@ const WALL_THICKNESS = 0.045;
 const BASEBOARD_HEIGHT = 0.08;
 const BASEBOARD_DEPTH = 0.02;
 
+/** Renders the room shell component used by this module. */
 export default function RoomShell({ room }: { room: PlannerRoom }) {
   const width = room.widthMm * MM_TO_SCENE;
   const depth = room.depthMm * MM_TO_SCENE;

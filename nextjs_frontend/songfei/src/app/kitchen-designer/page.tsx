@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /kitchen-designer route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -10,6 +16,7 @@ import { createPlannerProject, listPlannerProjects } from '@/features/kitchen-de
 import type { PlannerProject } from '@/features/kitchen-designer/types/planner';
 import { createEmptyPlannerSnapshot } from '@/features/kitchen-designer/utils/projectSnapshot';
 
+/** Renders the kitchen designer landing page. */
 export default function KitchenDesignerLandingPage() {
   const router = useRouter();
   const { showErrorPopup } = useErrorPopup();
@@ -47,6 +54,7 @@ export default function KitchenDesignerLandingPage() {
     void loadProjects();
   }, [loadProjects]);
 
+  /** Handles the start interaction for this component. */
   const handleStart = async () => {
     if (!isAuthenticated) {
       const projectId = `draft-${Date.now()}`;

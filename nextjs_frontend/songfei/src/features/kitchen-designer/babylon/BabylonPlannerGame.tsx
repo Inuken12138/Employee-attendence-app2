@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Babylon-based runtime helper for the kitchen designer.
+ *
+ * This file contains rendering or math glue that powers the richer interactive planner experience.
+ */
+
 import { useEffect, useRef } from 'react';
 
 import { usePlannerStore } from '../state/plannerStore';
@@ -11,6 +17,7 @@ interface BabylonPlannerGameProps {
   compact?: boolean;
 }
 
+/** Renders the babylon planner game component used by this module. */
 export default function BabylonPlannerGame({ room, compact = false }: BabylonPlannerGameProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const runtimeRef = useRef<Awaited<ReturnType<typeof createPlannerRuntime>> | null>(null);
@@ -20,6 +27,7 @@ export default function BabylonPlannerGame({ room, compact = false }: BabylonPla
   const selectNode = usePlannerStore((state) => state.selectNode);
   const removeNode = usePlannerStore((state) => state.removeNode);
   const setInteractionMode = usePlannerStore((state) => state.setInteractionMode);
+  const updateNodeDimensions = usePlannerStore((state) => state.updateNodeDimensions);
   const updateNodePosition = usePlannerStore((state) => state.updateNodePosition);
   const updateNodeRotation = usePlannerStore((state) => state.updateNodeRotation);
   const latestStateRef = useRef({ room, nodes, selectedNodeId, interactionMode });
@@ -41,6 +49,7 @@ export default function BabylonPlannerGame({ room, compact = false }: BabylonPla
           onSelectNode: selectNode,
           onDeleteNode: removeNode,
           onSetInteractionMode: setInteractionMode,
+          onUpdateNodeDimensions: updateNodeDimensions,
           onUpdateNodePosition: updateNodePosition,
           onUpdateNodeRotation: updateNodeRotation,
         },
@@ -62,7 +71,7 @@ export default function BabylonPlannerGame({ room, compact = false }: BabylonPla
       runtimeRef.current?.dispose();
       runtimeRef.current = null;
     };
-  }, [compact, removeNode, selectNode, setInteractionMode, updateNodePosition, updateNodeRotation]);
+  }, [compact, removeNode, selectNode, setInteractionMode, updateNodeDimensions, updateNodePosition, updateNodeRotation]);
 
   useEffect(() => {
     runtimeRef.current?.sync({ room, nodes, selectedNodeId, interactionMode });

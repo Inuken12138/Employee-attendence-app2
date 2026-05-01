@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * 3D scene component for the kitchen designer.
+ *
+ * These files turn planner state into visual geometry, camera behavior, and lighting inside the design canvas.
+ */
+
 import { Canvas } from '@react-three/fiber';
 
 import { usePlannerStore } from '../state/plannerStore';
@@ -8,6 +14,7 @@ import RoomShell from './RoomShell';
 import SceneCamera from './SceneCamera';
 import SceneLights from './SceneLights';
 
+/** Renders the designer canvas component used by this module. */
 export default function DesignerCanvas() {
   const room = usePlannerStore((state) => state.room);
   const nodes = usePlannerStore((state) => state.nodes);

@@ -1,3 +1,8 @@
+/**
+ * 3D scene component for the kitchen designer.
+ *
+ * These files turn planner state into visual geometry, camera behavior, and lighting inside the design canvas.
+ */
 import { Edges, Html, useGLTF } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
@@ -11,6 +16,7 @@ const SNAP_MM = 50;
 const WALL_SNAP_THRESHOLD_MM = 140;
 const floorPlane = new Plane(new Vector3(0, 1, 0), 0);
 
+/** Helper used by this module to manage supports pointer capture. */
 function supportsPointerCapture(target: EventTarget | null): target is EventTarget & {
   setPointerCapture: (pointerId: number) => void;
   releasePointerCapture: (pointerId: number) => void;
@@ -22,14 +28,17 @@ function supportsPointerCapture(target: EventTarget | null): target is EventTarg
   return 'setPointerCapture' in target && 'releasePointerCapture' in target;
 }
 
+/** Clamps the  so it stays within allowed limits. */
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Helper used by this module to manage snap. */
 function snap(value: number) {
   return Math.round(value / SNAP_MM) * SNAP_MM;
 }
 
+/** Normalizes the rotation into the shape expected by this module. */
 function normalizeRotation(angle: number) {
   const fullTurn = Math.PI * 2;
   let next = angle % fullTurn;
@@ -41,6 +50,7 @@ function normalizeRotation(angle: number) {
   return next;
 }
 
+/** Returns the rotated footprint for the current input. */
 function getRotatedFootprint(node: PlannerNode, rotationY: number) {
   const normalizedRotation = normalizeRotation(rotationY);
   const cos = Math.cos(normalizedRotation);
@@ -52,6 +62,7 @@ function getRotatedFootprint(node: PlannerNode, rotationY: number) {
   };
 }
 
+/** Clamps the position to room so it stays within allowed limits. */
 function clampPositionToRoom(node: PlannerNode, room: PlannerRoom, position: { x: number; z: number }, rotationY: number) {
   const footprint = getRotatedFootprint(node, rotationY);
 
@@ -61,6 +72,7 @@ function clampPositionToRoom(node: PlannerNode, room: PlannerRoom, position: { x
   };
 }
 
+/** Returns the wall snap candidate for the current input. */
 function getWallSnapCandidate(node: PlannerNode, room: PlannerRoom, position: { x: number; z: number }) {
   const candidates = [
     {
@@ -121,6 +133,7 @@ function getWallSnapCandidate(node: PlannerNode, room: PlannerRoom, position: { 
   return bestCandidate;
 }
 
+/** Renders the scene model component used by this module. */
 function SceneModel({ node }: { node: PlannerNode }) {
   const gltf = useGLTF(node.glbFileUrl || '');
 
@@ -152,6 +165,7 @@ function SceneModel({ node }: { node: PlannerNode }) {
   );
 }
 
+/** Renders the product node component used by this module. */
 export default function ProductNode({
   node,
   room,
@@ -175,6 +189,7 @@ export default function ProductNode({
     startRotationY: number;
   } | null>(null);
 
+  /** Handles the click interaction for this component. */
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
     onSelect(node.nodeId);
@@ -186,6 +201,7 @@ export default function ProductNode({
     }
   }, [isSelected]);
 
+  /** Handles the pointer down interaction for this component. */
   const handlePointerDown = (event: ThreeEvent<PointerEvent>) => {
     if (!isSelected) {
       return;
@@ -228,6 +244,7 @@ export default function ProductNode({
     }
   };
 
+  /** Handles the pointer move interaction for this component. */
   const handlePointerMove = (event: ThreeEvent<PointerEvent>) => {
     if (!dragStateRef.current || !isSelected) {
       return;
@@ -267,6 +284,7 @@ export default function ProductNode({
     updateNodeRotation(node.nodeId, nextRotation);
   };
 
+  /** Handles the pointer up interaction for this component. */
   const handlePointerUp = (event: ThreeEvent<PointerEvent>) => {
     if (!dragStateRef.current) {
       return;

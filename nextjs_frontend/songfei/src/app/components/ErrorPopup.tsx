@@ -1,5 +1,18 @@
 'use client';
 
+/**
+ * Shared application UI component.
+ *
+ * This file contains reusable presentation logic that is consumed by multiple storefront or ERP routes.
+ */
+
+/**
+ * Simple presentation component for the global error modal.
+ *
+ * The provider decides when an error should be shown; this component only
+ * handles the visual overlay, message text, and close action.
+ */
+
 import React from 'react';
 
 interface ErrorPopupProps {
@@ -8,6 +21,7 @@ interface ErrorPopupProps {
   title?: string;
 }
 
+/** Renders the error dialog when there is a message to show. */
 export default function ErrorPopup({ message, onClose, title = 'Error' }: ErrorPopupProps) {
   if (!message) return null;
 

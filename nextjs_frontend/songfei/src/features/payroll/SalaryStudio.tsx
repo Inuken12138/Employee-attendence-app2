@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Payroll feature module used by the ERP salary workspace.
+ *
+ * It contains the richer payroll workflow UI and its helper logic so the route file can stay small and focused on routing.
+ */
+
 import { Cormorant_Garamond, IBM_Plex_Sans } from 'next/font/google';
 import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -50,10 +56,13 @@ const PROJECT_TALLY_QUICK_OPTIONS = [
 
 type SalaryStudioView = (typeof SALARY_VIEW_OPTIONS)[number]['value'];
 type PolicyStatus = 'draft' | 'active' | 'archived';
+type CompensationFormMode = 'create' | 'edit' | 'terminate';
+type AttendanceWorkRuleFormMode = 'create' | 'edit' | 'terminate';
 type PayrollRunType = 'normal' | 'correction';
 type PayrollRunStatus = 'draft' | 'review' | 'approved' | 'locked' | 'paid';
 type ProjectStatus = 'planned' | 'active' | 'completed' | 'settled';
 type QuantityUnit = 'day' | 'half_day' | 'hour';
+type AttendanceWorkRule = 'standard' | 'driver_time_bank';
 
 interface RecordsEnvelope<T> {
   records: T[];
@@ -80,6 +89,7 @@ interface PayrollPolicyRecord {
   normal_work_hours_per_day: string;
   salary_days_per_month: number;
   overtime_multiplier: string;
+  overtime_grace_minutes: number;
   late_grace_minutes: number | null;
   rounding_unit_amount: number;
   rounding_rule: string;
@@ -100,11 +110,23 @@ interface CompensationProfileRecord {
   rice_allowance_amount: string | null;
   social_security_allowance_amount: string | null;
   eligible_for_social_security: boolean;
-  trial_period_end_date: string | null;
   payroll_policy: number | null;
   payroll_policy_name?: string | null;
   effective_from: string;
   effective_to: string | null;
+}
+
+type CompensationProfileTiming = 'selected-month' | 'future' | 'ended';
+
+interface AttendanceWorkRuleProfileRecord {
+  id: number;
+  employee: number;
+  employee_name?: string | null;
+  worker_id?: string | null;
+  work_rule: AttendanceWorkRule;
+  effective_from: string;
+  effective_to: string | null;
+  notes: string;
 }
 
 interface AttendanceSummaryRecord {
@@ -119,7 +141,9 @@ interface AttendanceSummaryRecord {
   scheduled_minutes_total: number;
   worked_minutes_total: number;
   late_minutes_total: number;
+  early_departure_minutes_total: number;
   absent_minutes_total: number;
+  time_bank_minutes_total: number;
   approved_leave_minutes_total: number;
   unapproved_leave_minutes_total: number;
   potential_ot_minutes_total: number;
@@ -237,11 +261,19 @@ interface PayrollRunEmployeeRecord {
   monthly_base_wage_amount: string;
   attendance_bonus_amount: string;
   late_minutes_total: number;
+  early_departure_minutes_total: number;
   absent_minutes_total: number;
+  time_bank_minutes_total: number;
+  opening_time_bank_minutes_total: number;
+  settled_time_bank_minutes_total: number;
+  closing_time_bank_minutes_total: number;
   approved_leave_minutes_total: number;
   unapproved_leave_minutes_total: number;
   approved_ot_minutes_total: number;
+  approved_ot_offset_minutes_total: number;
+  payable_ot_minutes_total: number;
   denied_ot_minutes_total: number;
+  deductible_minutes_total: number;
   deduction_amount: string;
   overtime_pay_amount: string;
   project_bonus_amount: string;
@@ -269,9 +301,13 @@ interface PayrollMonthlySummaryRecord {
   total_rounding_adjustment_amount: string;
   total_gross_payable_amount: string;
   total_late_minutes: number;
+  total_early_departure_minutes: number;
   total_absent_minutes: number;
+  total_time_bank_minutes: number;
   total_leave_minutes: number;
   total_approved_ot_minutes: number;
+  total_approved_ot_offset_minutes: number;
+  total_payable_ot_minutes: number;
 }
 
 interface PayrollMonthlyTrendRecord extends PayrollMonthlySummaryRecord {
@@ -347,6 +383,9 @@ interface WorkforceReportPreviewRecord {
     gross_payable_amount: string;
     late_minutes_total: number;
     approved_ot_minutes_total: number;
+    approved_ot_offset_minutes_total: number;
+    payable_ot_minutes_total: number;
+    closing_time_bank_minutes_total: number;
     project_bonus_amount: string;
   }>;
   rounding_note: string;
@@ -368,10 +407,17 @@ interface EmployeeReportPreviewRecord {
   };
   attendance_summary: {
     late_minutes_total: number;
+    early_departure_minutes_total: number;
     absent_minutes_total: number;
+    time_bank_minutes_total: number;
     approved_leave_minutes_total: number;
     unapproved_leave_minutes_total: number;
     approved_ot_minutes_total: number;
+    approved_ot_offset_minutes_total: number;
+    payable_ot_minutes_total: number;
+    opening_time_bank_minutes_total: number;
+    settled_time_bank_minutes_total: number;
+    closing_time_bank_minutes_total: number;
     denied_ot_minutes_total: number;
     full_attendance_eligible: boolean;
   };
@@ -410,6 +456,11 @@ interface PolicyImpactPreviewRow {
   attendance_bonus: number;
   deduction_amount: number;
   overtime_pay_amount: number;
+  approved_ot_offset_minutes_total: number;
+  payable_ot_minutes_total: number;
+  opening_time_bank_minutes_total: number;
+  time_bank_minutes_total: number;
+  closing_time_bank_minutes_total: number;
   manual_adjustments_amount: number;
   project_bonus_amount: number;
   carry_forward_recovery_amount: number;
@@ -470,6 +521,7 @@ interface PolicyFormState {
   normalWorkHoursPerDay: string;
   salaryDaysPerMonth: string;
   overtimeMultiplier: string;
+  overtimeGraceMinutes: string;
   lateGraceMinutes: string;
   roundingUnitAmount: string;
   unapprovedAbsenceIncidentThreshold: string;
@@ -485,19 +537,29 @@ interface CompensationFormState {
   riceAllowanceAmount: string;
   socialSecurityAllowanceAmount: string;
   eligibleForSocialSecurity: boolean;
-  trialPeriodEndDate: string;
   payrollPolicy: string;
   effectiveFrom: string;
   effectiveTo: string;
 }
 
+interface AttendanceWorkRuleFormState {
+  id: number | null;
+  employee: string;
+  workRule: AttendanceWorkRule;
+  effectiveFrom: string;
+  effectiveTo: string;
+  notes: string;
+}
+
 interface AdjustmentFormState {
+  id: number | null;
   employee: string;
   year: string;
   month: string;
   adjustmentType: string;
   amount: string;
   notes: string;
+  repeatUntil: string;
 }
 
 interface ProjectFormState {
@@ -531,10 +593,26 @@ interface ReportFormState {
   employeeId: string;
 }
 
+/** Builds the iso date used by this module. */
 const buildIsoDate = (year: number, month: number, day: number) => (
   `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 );
 
+/** Returns the today iso date for the current input. */
+const getTodayIsoDate = () => {
+  const now = new Date();
+  return buildIsoDate(now.getFullYear(), now.getMonth() + 1, now.getDate());
+};
+
+/** Helper used by this module to manage shift iso date. */
+const shiftIsoDate = (isoDate: string, days: number) => {
+  const [year, month, day] = isoDate.split('-').map((segment) => Number(segment));
+  const nextDate = new Date(year, month - 1, day);
+  nextDate.setDate(nextDate.getDate() + days);
+  return buildIsoDate(nextDate.getFullYear(), nextDate.getMonth() + 1, nextDate.getDate());
+};
+
+/** Creates the policy form used by this module. */
 const createPolicyForm = (year: number, month: number): PolicyFormState => ({
   id: null,
   policyCode: 'PAYROLL',
@@ -549,6 +627,7 @@ const createPolicyForm = (year: number, month: number): PolicyFormState => ({
   normalWorkHoursPerDay: '8',
   salaryDaysPerMonth: '30',
   overtimeMultiplier: '2',
+  overtimeGraceMinutes: '0',
   lateGraceMinutes: '0',
   roundingUnitAmount: '1000',
   unapprovedAbsenceIncidentThreshold: '2',
@@ -557,6 +636,7 @@ const createPolicyForm = (year: number, month: number): PolicyFormState => ({
   isActive: false,
 });
 
+/** Creates the compensation form used by this module. */
 const createCompensationForm = (year: number, month: number): CompensationFormState => ({
   id: null,
   employee: '',
@@ -564,21 +644,34 @@ const createCompensationForm = (year: number, month: number): CompensationFormSt
   riceAllowanceAmount: '',
   socialSecurityAllowanceAmount: '',
   eligibleForSocialSecurity: true,
-  trialPeriodEndDate: '',
   payrollPolicy: '',
   effectiveFrom: buildIsoDate(year, month, 1),
   effectiveTo: '',
 });
 
+/** Creates the attendance work rule form used by this module. */
+const createAttendanceWorkRuleForm = (year: number, month: number): AttendanceWorkRuleFormState => ({
+  id: null,
+  employee: '',
+  workRule: 'standard',
+  effectiveFrom: buildIsoDate(year, month, 1),
+  effectiveTo: '',
+  notes: '',
+});
+
+/** Creates the adjustment form used by this module. */
 const createAdjustmentForm = (year: number, month: number): AdjustmentFormState => ({
+  id: null,
   employee: '',
   year: String(year),
   month: String(month),
   adjustmentType: 'manual_bonus',
   amount: '',
   notes: '',
+  repeatUntil: '',
 });
 
+/** Creates the project form used by this module. */
 const createProjectForm = (year: number, month: number): ProjectFormState => ({
   name: '',
   projectCode: '',
@@ -590,6 +683,7 @@ const createProjectForm = (year: number, month: number): ProjectFormState => ({
   managementNote: '',
 });
 
+/** Creates the assignment form used by this module. */
 const createAssignmentForm = (year: number, month: number): AssignmentFormState => ({
   employee: '',
   role: '',
@@ -598,6 +692,7 @@ const createAssignmentForm = (year: number, month: number): AssignmentFormState 
   shareWeight: '',
 });
 
+/** Creates the run form used by this module. */
 const createRunForm = (): RunFormState => ({
   runType: 'normal',
   policyId: '',
@@ -605,11 +700,13 @@ const createRunForm = (): RunFormState => ({
   notes: '',
 });
 
+/** Creates the report form used by this module. */
 const createReportForm = (): ReportFormState => ({
   reportType: 'workforce_management',
   employeeId: '',
 });
 
+/** Formats the money into display-ready text. */
 const formatMoney = (value: string | number | null | undefined) => {
   const numericValue = Number(value ?? 0);
   if (!Number.isFinite(numericValue)) {
@@ -622,6 +719,7 @@ const formatMoney = (value: string | number | null | undefined) => {
   })} LAK`;
 };
 
+/** Formats the minutes into display-ready text. */
 const formatMinutes = (minutes: number) => {
   if (!Number.isFinite(minutes) || minutes <= 0) {
     return '0m';
@@ -637,22 +735,118 @@ const formatMinutes = (minutes: number) => {
   return `${remainder}m`;
 };
 
+/** Formats the month year into display-ready text. */
 const formatMonthYear = (year: number, month: number) => {
   const monthLabel = MONTH_OPTIONS.find((option) => option.value === month)?.label || String(month);
   return `${monthLabel} ${year}`;
 };
 
+/** Returns the days in payroll month for the current input. */
 const getDaysInPayrollMonth = (year: number, month: number) => new Date(year, month, 0).getDate();
 
+/** Formats the month token into display-ready text. */
 const formatMonthToken = (year: number, month: number) => `${year}-${String(month).padStart(2, '0')}`;
 
+/** Helper used by this module to manage date matches month. */
 const dateMatchesMonth = (value: string, year: number, month: number) => value.startsWith(`${formatMonthToken(year, month)}-`);
 
+/** Returns whether the adjustment should reduce payroll. */
+const adjustmentTypeBehavesAsDeduction = (adjustmentType: string) => (
+  adjustmentType === 'advance' || adjustmentType === 'manual_deduction'
+);
+
+/** Formats the adjustment type label into display-ready text. */
+const formatAdjustmentTypeLabel = (adjustmentType: string) => {
+  return ADJUSTMENT_TYPE_OPTIONS.find((option) => option.value === adjustmentType)?.label
+    || adjustmentType.replaceAll('_', ' ');
+};
+
+/** Builds the recurring adjustment periods used by this module. */
+const buildRecurringAdjustmentPeriods = (startYear: number, startMonth: number, repeatUntil: string) => {
+  const periods = [{ year: startYear, month: startMonth }];
+  if (!repeatUntil) {
+    return periods;
+  }
+
+  const [endYearText, endMonthText] = repeatUntil.split('-');
+  const endYear = Number(endYearText);
+  const endMonth = Number(endMonthText);
+  if (!Number.isInteger(endYear) || !Number.isInteger(endMonth) || endMonth < 1 || endMonth > 12) {
+    throw new Error('Repeat-until date must be a valid calendar month.');
+  }
+  if (endYear < startYear || (endYear === startYear && endMonth < startMonth)) {
+    throw new Error('Repeat-until date must be in the selected payroll month or later.');
+  }
+
+  let nextYear = startYear;
+  let nextMonth = startMonth;
+  while (nextYear < endYear || (nextYear === endYear && nextMonth < endMonth)) {
+    nextMonth += 1;
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear += 1;
+    }
+    periods.push({ year: nextYear, month: nextMonth });
+  }
+
+  return periods;
+};
+
+/** Returns the compensation profile timing for the current input. */
+const getCompensationProfileTiming = (
+  profile: CompensationProfileRecord,
+  year: number,
+  month: number,
+): { tone: CompensationProfileTiming; label: string } => {
+  const monthStart = buildIsoDate(year, month, 1);
+  const monthEnd = buildIsoDate(year, month, getDaysInPayrollMonth(year, month));
+
+  if (profile.effective_from > monthEnd) {
+    return { tone: 'future', label: 'Starts later' };
+  }
+
+  if (profile.effective_to && profile.effective_to < monthStart) {
+    return { tone: 'ended', label: 'Ended earlier' };
+  }
+
+  return { tone: 'selected-month', label: 'Applies in selected month' };
+};
+
+/** Returns the attendance work rule timing for the current input. */
+const getAttendanceWorkRuleTiming = (
+  profile: AttendanceWorkRuleProfileRecord,
+  year: number,
+  month: number,
+): { tone: CompensationProfileTiming; label: string } => {
+  const monthStart = buildIsoDate(year, month, 1);
+  const monthEnd = buildIsoDate(year, month, getDaysInPayrollMonth(year, month));
+
+  if (profile.effective_from > monthEnd) {
+    return { tone: 'future', label: 'Starts later' };
+  }
+
+  if (profile.effective_to && profile.effective_to < monthStart) {
+    return { tone: 'ended', label: 'Ended earlier' };
+  }
+
+  return { tone: 'selected-month', label: 'Applies in selected month' };
+};
+
+/** Formats the attendance work rule label into display-ready text. */
+const formatAttendanceWorkRuleLabel = (workRule: AttendanceWorkRule) => {
+  if (workRule === 'driver_time_bank') {
+    return 'Driver time bank';
+  }
+  return 'Standard';
+};
+
+/** Helper used by this module to manage to number. */
 const toNumber = (value: string | number | null | undefined) => {
   const numericValue = Number(value ?? 0);
   return Number.isFinite(numericValue) ? numericValue : 0;
 };
 
+/** Rounds the to unit to the precision used by this module. */
 const roundToUnit = (value: number, unit: number) => {
   if (!Number.isFinite(unit) || unit <= 0) {
     return value;
@@ -660,14 +854,17 @@ const roundToUnit = (value: number, unit: number) => {
   return Math.round(value / unit) * unit;
 };
 
+/** Formats the signed money into display-ready text. */
 const formatSignedMoney = (value: string | number | null | undefined) => {
   const numericValue = toNumber(value);
   const tone = numericValue >= 0 ? '+' : '-';
   return `${tone}${formatMoney(Math.abs(numericValue))}`;
 };
 
+/** Builds the project cell key used by this module. */
 const buildProjectCellKey = (employeeId: number, workDate: string) => `${employeeId}:${workDate}`;
 
+/** Formats the work log chip into display-ready text. */
 const formatWorkLogChip = (log: WorkLogRecord) => {
   if (log.quantity_unit === 'day') {
     return `${log.quantity_value}d`;
@@ -678,6 +875,7 @@ const formatWorkLogChip = (log: WorkLogRecord) => {
   return `${log.quantity_value}h`;
 };
 
+/** Normalizes the report url into the shape expected by this module. */
 const normalizeReportUrl = (url: string) => {
   if (url.startsWith('http://') || url.startsWith('https://')) {
     return url;
@@ -685,6 +883,7 @@ const normalizeReportUrl = (url: string) => {
   return `http://localhost:8000${url.startsWith('/') ? url : `/${url}`}`;
 };
 
+/** Helper used by this module to manage status tone class. */
 const statusToneClass = (status: string) => {
   switch (status) {
     case 'active':
@@ -705,6 +904,7 @@ const statusToneClass = (status: string) => {
   }
 };
 
+/** Extracts the api error message from a larger response or payload. */
 const extractApiErrorMessage = (value: unknown): string | null => {
   if (typeof value === 'string') {
     return value;
@@ -770,6 +970,7 @@ async function safeRequest<T>(input: string): Promise<{ data: T | null; error: s
   }
 }
 
+/** Renders the metric card component used by this module. */
 function MetricCard({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'accent' | 'positive' }) {
   return (
     <article className={`salary-studio-metric salary-studio-metric-${tone}`}>
@@ -779,6 +980,7 @@ function MetricCard({ label, value, tone = 'default' }: { label: string; value: 
   );
 }
 
+/** Renders the section title component used by this module. */
 function SectionTitle({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
   return (
     <div className="salary-studio-section-heading">
@@ -789,6 +991,7 @@ function SectionTitle({ eyebrow, title, copy }: { eyebrow: string; title: string
   );
 }
 
+/** Renders the workspace view button component used by this module. */
 function WorkspaceViewButton({
   label,
   isActive,
@@ -812,6 +1015,7 @@ function WorkspaceViewButton({
   );
 }
 
+/** Renders the salary trend chart component used by this module. */
 function SalaryTrendChart({ records }: { records: PayrollMonthlyTrendRecord[] }) {
   if (records.length === 0) {
     return <div className="salary-studio-empty-state">Lock payroll runs to build a multi-month workforce trend.</div>;
@@ -841,6 +1045,7 @@ function SalaryTrendChart({ records }: { records: PayrollMonthlyTrendRecord[] })
   );
 }
 
+/** Renders the salary studio component used by this module. */
 export default function SalaryStudio() {
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -854,6 +1059,7 @@ export default function SalaryStudio() {
   const [policies, setPolicies] = useState<PayrollPolicyRecord[]>([]);
   const [currentPolicy, setCurrentPolicy] = useState<PayrollPolicyRecord | null>(null);
   const [compensationProfiles, setCompensationProfiles] = useState<CompensationProfileRecord[]>([]);
+  const [attendanceWorkRuleProfiles, setAttendanceWorkRuleProfiles] = useState<AttendanceWorkRuleProfileRecord[]>([]);
   const [attendanceSummaries, setAttendanceSummaries] = useState<AttendanceSummaryRecord[]>([]);
   const [adjustments, setAdjustments] = useState<AdjustmentRecord[]>([]);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
@@ -868,6 +1074,9 @@ export default function SalaryStudio() {
   const [carryForwardBalances, setCarryForwardBalances] = useState<CarryForwardBalanceRecord[]>([]);
   const [policyForm, setPolicyForm] = useState<PolicyFormState>(createPolicyForm(currentYear, currentMonth));
   const [compensationForm, setCompensationForm] = useState<CompensationFormState>(createCompensationForm(currentYear, currentMonth));
+  const [compensationFormMode, setCompensationFormMode] = useState<CompensationFormMode>('create');
+  const [attendanceWorkRuleForm, setAttendanceWorkRuleForm] = useState<AttendanceWorkRuleFormState>(createAttendanceWorkRuleForm(currentYear, currentMonth));
+  const [attendanceWorkRuleFormMode, setAttendanceWorkRuleFormMode] = useState<AttendanceWorkRuleFormMode>('create');
   const [adjustmentForm, setAdjustmentForm] = useState<AdjustmentFormState>(createAdjustmentForm(currentYear, currentMonth));
   const [projectForm, setProjectForm] = useState<ProjectFormState>(createProjectForm(currentYear, currentMonth));
   const [assignmentForm, setAssignmentForm] = useState<AssignmentFormState>(createAssignmentForm(currentYear, currentMonth));
@@ -944,6 +1153,10 @@ export default function SalaryStudio() {
     return totals;
   }, [carryForwardBalances, selectedMonth, selectedYear]);
 
+  const openingTimeBankByEmployee = useMemo(() => {
+    return new Map<number, number>();
+  }, []);
+
   const policyPreviewTarget = useMemo(
     () => policies.find((policy) => policy.id === policyPreviewTargetId) || currentPolicy || null,
     [currentPolicy, policies, policyPreviewTargetId],
@@ -974,14 +1187,26 @@ export default function SalaryStudio() {
       const monthlyBaseWage = toNumber(profile.monthly_salary) + riceAllowance + socialSecurityAllowance;
       const dailySalaryRate = monthlyBaseWage / Math.max(toNumber(policyPreviewTarget.salary_days_per_month), 1);
       const hourlyWage = dailySalaryRate / Math.max(toNumber(policyPreviewTarget.normal_work_hours_per_day), 1);
+      const approvedOtOffsetMinutes = Math.min(
+        summary.approved_ot_minutes_total,
+        summary.late_minutes_total + summary.absent_minutes_total,
+      );
+      const remainingOtMinutes = summary.approved_ot_minutes_total - approvedOtOffsetMinutes;
+      const openingTimeBankMinutes = openingTimeBankByEmployee.get(summary.employee) || 0;
+      const settledTimeBankMinutes = Math.min(
+        remainingOtMinutes,
+        openingTimeBankMinutes + summary.time_bank_minutes_total,
+      );
+      const payableOtMinutes = remainingOtMinutes - settledTimeBankMinutes;
       const deductibleHours = (
         summary.late_minutes_total
         + summary.absent_minutes_total
+        - approvedOtOffsetMinutes
         + summary.approved_leave_minutes_total
         + summary.unapproved_leave_minutes_total
       ) / 60;
       const deductionAmount = deductibleHours * hourlyWage;
-      const overtimePayAmount = (summary.approved_ot_minutes_total / 60) * hourlyWage * Math.max(toNumber(policyPreviewTarget.overtime_multiplier), 1);
+      const overtimePayAmount = (payableOtMinutes / 60) * hourlyWage * Math.max(toNumber(policyPreviewTarget.overtime_multiplier), 1);
       const attendanceBonus = summary.full_attendance_eligible ? toNumber(policyPreviewTarget.full_attendance_bonus_amount) : 0;
       const manualAdjustmentsAmount = approvedAdjustmentsByEmployee.get(summary.employee) || 0;
       const projectBonusAmount = projectSettlementsByEmployee.get(summary.employee) || 0;
@@ -998,6 +1223,11 @@ export default function SalaryStudio() {
         attendance_bonus: attendanceBonus,
         deduction_amount: deductionAmount,
         overtime_pay_amount: overtimePayAmount,
+        approved_ot_offset_minutes_total: approvedOtOffsetMinutes,
+        payable_ot_minutes_total: payableOtMinutes,
+        opening_time_bank_minutes_total: openingTimeBankMinutes,
+        time_bank_minutes_total: summary.time_bank_minutes_total,
+        closing_time_bank_minutes_total: openingTimeBankMinutes + summary.time_bank_minutes_total - settledTimeBankMinutes,
         manual_adjustments_amount: manualAdjustmentsAmount,
         project_bonus_amount: projectBonusAmount,
         carry_forward_recovery_amount: carryForwardRecoveryAmount,
@@ -1019,7 +1249,7 @@ export default function SalaryStudio() {
       },
       missing_profiles: missingProfiles,
     };
-  }, [attendanceSummaries, approvedAdjustmentsByEmployee, carryForwardRecoveryByEmployee, compensationProfiles, policyPreviewTarget, projectSettlementsByEmployee]);
+  }, [attendanceSummaries, approvedAdjustmentsByEmployee, carryForwardRecoveryByEmployee, compensationProfiles, openingTimeBankByEmployee, policyPreviewTarget, projectSettlementsByEmployee]);
 
   const activeProjectMonthLogs = useMemo(
     () => projectWorkLogs.filter((log) => dateMatchesMonth(log.work_date, selectedYear, selectedMonth)),
@@ -1116,6 +1346,7 @@ export default function SalaryStudio() {
       policiesResult,
       currentPolicyResult,
       profilesResult,
+      workRuleProfilesResult,
       summariesResult,
       adjustmentsResult,
       projectsResult,
@@ -1127,7 +1358,10 @@ export default function SalaryStudio() {
       safeRequest<RecordsEnvelope<PayrollPolicyRecord>>(`${PAYROLL_API_BASE}/policies/`),
       safeRequest<PayrollPolicyRecord>(`${PAYROLL_API_BASE}/policies/active/?year=${year}&month=${month}`),
       safeRequest<RecordsEnvelope<CompensationProfileRecord>>(
-        `${PAYROLL_API_BASE}/compensation-profiles/?current_only=true&year=${year}&month=${month}`,
+        `${PAYROLL_API_BASE}/compensation-profiles/`,
+      ),
+      safeRequest<RecordsEnvelope<AttendanceWorkRuleProfileRecord>>(
+        `${PAYROLL_API_BASE}/attendance-work-rule-profiles/`,
       ),
       safeRequest<RecordsEnvelope<AttendanceSummaryRecord>>(
         `${PAYROLL_API_BASE}/attendance-summaries/?year=${year}&month=${month}`,
@@ -1150,6 +1384,7 @@ export default function SalaryStudio() {
       setPolicies(policiesResult.data?.records || []);
       setCurrentPolicy(currentPolicyResult.data || null);
       setCompensationProfiles(profilesResult.data?.records || []);
+      setAttendanceWorkRuleProfiles(workRuleProfilesResult.data?.records || []);
       setAttendanceSummaries(summariesResult.data?.records || []);
       setAdjustments(adjustmentsResult.data?.records || []);
       setProjects(projectsResult.data?.records || []);
@@ -1220,6 +1455,11 @@ export default function SalaryStudio() {
       };
     });
     setCompensationForm((previous) => (
+      previous.id !== null
+        ? previous
+        : { ...previous, effectiveFrom: buildIsoDate(selectedYear, selectedMonth, 1) }
+    ));
+    setAttendanceWorkRuleForm((previous) => (
       previous.id !== null
         ? previous
         : { ...previous, effectiveFrom: buildIsoDate(selectedYear, selectedMonth, 1) }
@@ -1300,6 +1540,7 @@ export default function SalaryStudio() {
     void loadEmployeeReportPreview(selectedRunId, previewEmployeeId);
   }, [loadEmployeeReportPreview, previewEmployeeId, selectedRunId]);
 
+  /** Helper used by this module to manage perform action. */
   const performAction = async (label: string, action: () => Promise<void>) => {
     setBusyLabel(label);
     setSuccessMessage(null);
@@ -1312,12 +1553,26 @@ export default function SalaryStudio() {
     }
   };
 
+  /** Helper used by this module to manage reset policy editor. */
   const resetPolicyEditor = () => setPolicyForm(createPolicyForm(selectedYear, selectedMonth));
-  const resetCompensationEditor = () => setCompensationForm(createCompensationForm(selectedYear, selectedMonth));
+  /** Helper used by this module to manage reset compensation editor. */
+  const resetCompensationEditor = () => {
+    setCompensationFormMode('create');
+    setCompensationForm(createCompensationForm(selectedYear, selectedMonth));
+  };
+  /** Helper used by this module to manage reset attendance work rule editor. */
+  const resetAttendanceWorkRuleEditor = () => {
+    setAttendanceWorkRuleFormMode('create');
+    setAttendanceWorkRuleForm(createAttendanceWorkRuleForm(selectedYear, selectedMonth));
+  };
+  /** Helper used by this module to manage reset adjustment editor. */
   const resetAdjustmentEditor = () => setAdjustmentForm(createAdjustmentForm(selectedYear, selectedMonth));
+  /** Helper used by this module to manage reset project editor. */
   const resetProjectEditor = () => setProjectForm(createProjectForm(selectedYear, selectedMonth));
+  /** Helper used by this module to manage reset assignment editor. */
   const resetAssignmentEditor = () => setAssignmentForm(createAssignmentForm(selectedYear, selectedMonth));
 
+  /** Helper used by this module to manage activate policy. */
   const activatePolicy = async (policyId: number) => {
     await requestJson(`${PAYROLL_API_BASE}/policies/${policyId}/activate/`, { method: 'POST' });
     await refreshStudio();
@@ -1325,12 +1580,14 @@ export default function SalaryStudio() {
     setSuccessMessage('Payroll policy activated.');
   };
 
+  /** Helper used by this module to manage archive policy. */
   const archivePolicy = async (policyId: number) => {
     await requestJson(`${PAYROLL_API_BASE}/policies/${policyId}/archive/`, { method: 'POST' });
     await refreshStudio();
     setSuccessMessage('Payroll policy archived.');
   };
 
+  /** Clones the policy so later edits do not mutate the original value. */
   const clonePolicy = async (policyId: number) => {
     const clonedPolicy = await requestJson<PayrollPolicyRecord>(`${PAYROLL_API_BASE}/policies/${policyId}/clone/`, {
       method: 'POST',
@@ -1342,6 +1599,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Payroll policy cloned into a new draft version.');
   };
 
+  /** Helper used by this module to manage delete policy. */
   const deletePolicy = async (policyId: number) => {
     await requestJson(`${PAYROLL_API_BASE}/policies/${policyId}/`, { method: 'DELETE' });
     await refreshStudio();
@@ -1351,6 +1609,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Unused draft policy deleted.');
   };
 
+  /** Helper used by this module to manage save policy. */
   const savePolicy = async () => {
     const payload = {
       policy_code: policyForm.policyCode,
@@ -1365,6 +1624,7 @@ export default function SalaryStudio() {
       normal_work_hours_per_day: policyForm.normalWorkHoursPerDay || '8',
       salary_days_per_month: Number(policyForm.salaryDaysPerMonth || 30),
       overtime_multiplier: policyForm.overtimeMultiplier || '2',
+      overtime_grace_minutes: Number(policyForm.overtimeGraceMinutes || 0),
       late_grace_minutes: policyForm.lateGraceMinutes ? Number(policyForm.lateGraceMinutes) : null,
       rounding_unit_amount: Number(policyForm.roundingUnitAmount || 1000),
       rounding_rule: 'nearest_thousand',
@@ -1386,6 +1646,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Payroll policy saved.');
   };
 
+  /** Helper used by this module to manage save compensation profile. */
   const saveCompensationProfile = async () => {
     const payload = {
       employee: Number(compensationForm.employee),
@@ -1393,7 +1654,6 @@ export default function SalaryStudio() {
       rice_allowance_amount: compensationForm.riceAllowanceAmount || null,
       social_security_allowance_amount: compensationForm.socialSecurityAllowanceAmount || null,
       eligible_for_social_security: compensationForm.eligibleForSocialSecurity,
-      trial_period_end_date: compensationForm.trialPeriodEndDate || null,
       payroll_policy: compensationForm.payrollPolicy ? Number(compensationForm.payrollPolicy) : null,
       effective_from: compensationForm.effectiveFrom,
       effective_to: compensationForm.effectiveTo || null,
@@ -1407,32 +1667,121 @@ export default function SalaryStudio() {
     });
     await refreshStudio();
     resetCompensationEditor();
-    setSuccessMessage('Compensation profile saved.');
+    if (compensationFormMode === 'terminate') {
+      setSuccessMessage('Compensation profile end date saved.');
+    } else if (compensationForm.id === null) {
+      setSuccessMessage('Compensation profile saved.');
+    } else {
+      setSuccessMessage('Compensation profile updated.');
+    }
   };
 
-  const saveAdjustment = async () => {
-    await requestJson(`${PAYROLL_API_BASE}/adjustments/`, {
-      method: 'POST',
-      body: JSON.stringify({
-        employee: Number(adjustmentForm.employee),
-        year: Number(adjustmentForm.year),
-        month: Number(adjustmentForm.month),
-        adjustment_type: adjustmentForm.adjustmentType,
-        amount: adjustmentForm.amount,
-        notes: adjustmentForm.notes,
-      }),
+  /** Helper used by this module to manage save attendance work rule profile. */
+  const saveAttendanceWorkRuleProfile = async () => {
+    const payload = {
+      employee: Number(attendanceWorkRuleForm.employee),
+      work_rule: attendanceWorkRuleForm.workRule,
+      effective_from: attendanceWorkRuleForm.effectiveFrom,
+      effective_to: attendanceWorkRuleForm.effectiveTo || null,
+      notes: attendanceWorkRuleForm.notes,
+    };
+    const endpoint = attendanceWorkRuleForm.id === null
+      ? `${PAYROLL_API_BASE}/attendance-work-rule-profiles/`
+      : `${PAYROLL_API_BASE}/attendance-work-rule-profiles/${attendanceWorkRuleForm.id}/`;
+    await requestJson(endpoint, {
+      method: attendanceWorkRuleForm.id === null ? 'POST' : 'PATCH',
+      body: JSON.stringify(payload),
     });
     await refreshStudio();
+    resetAttendanceWorkRuleEditor();
+    if (attendanceWorkRuleFormMode === 'terminate') {
+      setSuccessMessage('Attendance work-rule end date saved.');
+    } else if (attendanceWorkRuleForm.id === null) {
+      setSuccessMessage('Attendance work-rule profile saved.');
+    } else {
+      setSuccessMessage('Attendance work-rule profile updated.');
+    }
+  };
+
+  /** Helper used by this module to manage save adjustment. */
+  const saveAdjustment = async () => {
+    const buildPayload = (year: number, month: number) => ({
+      employee: Number(adjustmentForm.employee),
+      year,
+      month,
+      adjustment_type: adjustmentForm.adjustmentType,
+      amount: adjustmentForm.amount,
+      notes: adjustmentForm.notes,
+    });
+
+    if (adjustmentForm.id !== null) {
+      await requestJson(`${PAYROLL_API_BASE}/adjustments/${adjustmentForm.id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify(buildPayload(Number(adjustmentForm.year), Number(adjustmentForm.month))),
+      });
+    } else {
+      const recurringPeriods = buildRecurringAdjustmentPeriods(
+        Number(adjustmentForm.year),
+        Number(adjustmentForm.month),
+        adjustmentForm.repeatUntil,
+      );
+      for (const period of recurringPeriods) {
+        await requestJson(`${PAYROLL_API_BASE}/adjustments/`, {
+          method: 'POST',
+          body: JSON.stringify(buildPayload(period.year, period.month)),
+        });
+      }
+    }
+
+    await refreshStudio();
     resetAdjustmentEditor();
+    if (adjustmentForm.id !== null) {
+      setSuccessMessage('Payroll adjustment updated.');
+      return;
+    }
+
+    if (adjustmentForm.repeatUntil) {
+      const [endYearText, endMonthText] = adjustmentForm.repeatUntil.split('-');
+      setSuccessMessage(`Payroll adjustments created through ${formatMonthYear(Number(endYearText), Number(endMonthText))}.`);
+      return;
+    }
+
     setSuccessMessage('Payroll adjustment created.');
   };
 
+  /** Helper used by this module to manage approve adjustment. */
   const approveAdjustment = async (adjustmentId: number) => {
     await requestJson(`${PAYROLL_API_BASE}/adjustments/${adjustmentId}/approve/`, { method: 'POST' });
     await refreshStudio();
     setSuccessMessage('Payroll adjustment approved.');
   };
 
+  /** Helper used by this module to manage edit adjustment. */
+  const editAdjustment = (adjustment: AdjustmentRecord) => {
+    const rawAmount = toNumber(adjustment.amount);
+    setAdjustmentForm({
+      id: adjustment.id,
+      employee: String(adjustment.employee),
+      year: String(adjustment.year),
+      month: String(adjustment.month),
+      adjustmentType: adjustment.adjustment_type,
+      amount: adjustmentTypeBehavesAsDeduction(adjustment.adjustment_type) ? String(Math.abs(rawAmount)) : String(adjustment.amount),
+      notes: adjustment.notes,
+      repeatUntil: '',
+    });
+  };
+
+  /** Helper used by this module to manage delete adjustment. */
+  const deleteAdjustment = async (adjustmentId: number) => {
+    await requestJson(`${PAYROLL_API_BASE}/adjustments/${adjustmentId}/`, { method: 'DELETE' });
+    await refreshStudio();
+    if (adjustmentForm.id === adjustmentId) {
+      resetAdjustmentEditor();
+    }
+    setSuccessMessage('Payroll adjustment deleted.');
+  };
+
+  /** Helper used by this module to manage save project. */
   const saveProject = async () => {
     const project = await requestJson<ProjectRecord>(`${PAYROLL_API_BASE}/projects/`, {
       method: 'POST',
@@ -1453,6 +1802,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Project created.');
   };
 
+  /** Helper used by this module to manage save assignment. */
   const saveAssignment = async () => {
     if (activeProjectId === null) {
       throw new Error('Select a project before adding assignments.');
@@ -1472,6 +1822,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Project assignment added.');
   };
 
+  /** Creates the project work log used by this module. */
   const createProjectWorkLog = async ({
     employee,
     workDate,
@@ -1503,6 +1854,7 @@ export default function SalaryStudio() {
     await refreshStudio();
   };
 
+  /** Helper used by this module to manage delete project work log. */
   const deleteProjectWorkLog = async (workLogId: number) => {
     await requestJson(`${PAYROLL_API_BASE}/project-work-logs/${workLogId}/`, { method: 'DELETE' });
     if (activeProjectId !== null) {
@@ -1512,6 +1864,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Project tally entry removed.');
   };
 
+  /** Helper used by this module to manage save quick tally entry. */
   const saveQuickTallyEntry = async (employee: number, workDate: string, quantityUnit: QuantityUnit, quantityValue: string) => {
     await createProjectWorkLog({
       employee,
@@ -1523,6 +1876,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Project tally updated.');
   };
 
+  /** Helper used by this module to manage save custom tally entry. */
   const saveCustomTallyEntry = async () => {
     if (!tallyEditor) {
       return;
@@ -1539,6 +1893,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Custom project tally saved.');
   };
 
+  /** Sets the tle project for the current workflow. */
   const settleProject = async () => {
     if (activeProjectId === null) {
       throw new Error('Select a project before settlement.');
@@ -1555,6 +1910,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Project bonus settlement completed.');
   };
 
+  /** Helper used by this module to manage generate run. */
   const generateRun = async () => {
     const run = await requestJson<PayrollRunDetailRecord>(`${PAYROLL_API_BASE}/runs/generate/`, {
       method: 'POST',
@@ -1574,6 +1930,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Payroll run generated.');
   };
 
+  /** Creates the correction run used by this module. */
   const createCorrectionRun = async () => {
     if (selectedRunId === null) {
       throw new Error('Select a payroll run before creating a correction run.');
@@ -1592,6 +1949,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Correction payroll run created.');
   };
 
+  /** Helper used by this module to manage approve run. */
   const approveRun = async () => {
     if (selectedRunId === null) {
       throw new Error('Select a payroll run before approving.');
@@ -1602,6 +1960,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Payroll run approved.');
   };
 
+  /** Helper used by this module to manage lock run. */
   const lockRun = async () => {
     if (selectedRunId === null) {
       throw new Error('Select a payroll run before locking.');
@@ -1612,6 +1971,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Payroll run locked.');
   };
 
+  /** Helper used by this module to manage rebuild summaries. */
   const rebuildSummaries = async () => {
     await requestJson<RecordsEnvelope<AttendanceSummaryRecord>>(
       `${PAYROLL_API_BASE}/attendance-summaries/?year=${selectedYear}&month=${selectedMonth}&rebuild=true`,
@@ -1620,6 +1980,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Attendance summaries rebuilt for the selected month.');
   };
 
+  /** Helper used by this module to manage generate report. */
   const generateReport = async () => {
     if (selectedRunId === null) {
       throw new Error('Select a payroll run before generating reports.');
@@ -1637,6 +1998,7 @@ export default function SalaryStudio() {
     setSuccessMessage('Report artifacts generated.');
   };
 
+  /** Helper used by this module to manage edit policy. */
   const editPolicy = (policy: PayrollPolicyRecord) => {
     setPolicyPreviewTargetId(policy.id);
     setPolicyForm({
@@ -1653,6 +2015,7 @@ export default function SalaryStudio() {
       normalWorkHoursPerDay: policy.normal_work_hours_per_day,
       salaryDaysPerMonth: String(policy.salary_days_per_month),
       overtimeMultiplier: policy.overtime_multiplier,
+      overtimeGraceMinutes: String(policy.overtime_grace_minutes || 0),
       lateGraceMinutes: policy.late_grace_minutes === null ? '' : String(policy.late_grace_minutes),
       roundingUnitAmount: String(policy.rounding_unit_amount),
       unapprovedAbsenceIncidentThreshold: String(policy.unapproved_absence_incident_threshold),
@@ -1662,7 +2025,9 @@ export default function SalaryStudio() {
     });
   };
 
+  /** Helper used by this module to manage edit compensation profile. */
   const editCompensationProfile = (profile: CompensationProfileRecord) => {
+    setCompensationFormMode('edit');
     setCompensationForm({
       id: profile.id,
       employee: String(profile.employee),
@@ -1670,10 +2035,88 @@ export default function SalaryStudio() {
       riceAllowanceAmount: profile.rice_allowance_amount || '',
       socialSecurityAllowanceAmount: profile.social_security_allowance_amount || '',
       eligibleForSocialSecurity: profile.eligible_for_social_security,
-      trialPeriodEndDate: profile.trial_period_end_date || '',
       payrollPolicy: profile.payroll_policy ? String(profile.payroll_policy) : '',
       effectiveFrom: profile.effective_from,
       effectiveTo: profile.effective_to || '',
+    });
+  };
+
+  /** Helper used by this module to manage edit attendance work rule profile. */
+  const editAttendanceWorkRuleProfile = (profile: AttendanceWorkRuleProfileRecord) => {
+    setAttendanceWorkRuleFormMode('edit');
+    setAttendanceWorkRuleForm({
+      id: profile.id,
+      employee: String(profile.employee),
+      workRule: profile.work_rule,
+      effectiveFrom: profile.effective_from,
+      effectiveTo: profile.effective_to || '',
+      notes: profile.notes,
+    });
+  };
+
+  /** Helper used by this module to manage begin compensation termination. */
+  const beginCompensationTermination = (profile: CompensationProfileRecord) => {
+    setCompensationFormMode('terminate');
+    setCompensationForm({
+      id: profile.id,
+      employee: String(profile.employee),
+      monthlySalary: profile.monthly_salary,
+      riceAllowanceAmount: profile.rice_allowance_amount || '',
+      socialSecurityAllowanceAmount: profile.social_security_allowance_amount || '',
+      eligibleForSocialSecurity: profile.eligible_for_social_security,
+      payrollPolicy: profile.payroll_policy ? String(profile.payroll_policy) : '',
+      effectiveFrom: profile.effective_from,
+      effectiveTo: profile.effective_to || getTodayIsoDate(),
+    });
+  };
+
+  /** Helper used by this module to manage begin attendance work rule termination. */
+  const beginAttendanceWorkRuleTermination = (profile: AttendanceWorkRuleProfileRecord) => {
+    setAttendanceWorkRuleFormMode('terminate');
+    setAttendanceWorkRuleForm({
+      id: profile.id,
+      employee: String(profile.employee),
+      workRule: profile.work_rule,
+      effectiveFrom: profile.effective_from,
+      effectiveTo: profile.effective_to || getTodayIsoDate(),
+      notes: profile.notes,
+    });
+  };
+
+  /** Creates the compensation successor used by this module. */
+  const createCompensationSuccessor = (profile: CompensationProfileRecord) => {
+    if (!profile.effective_to) {
+      throw new Error('End the current compensation profile before creating its successor.');
+    }
+
+    setCompensationFormMode('create');
+    setCompensationForm({
+      id: null,
+      employee: String(profile.employee),
+      monthlySalary: profile.monthly_salary,
+      riceAllowanceAmount: profile.rice_allowance_amount || '',
+      socialSecurityAllowanceAmount: profile.social_security_allowance_amount || '',
+      eligibleForSocialSecurity: profile.eligible_for_social_security,
+      payrollPolicy: profile.payroll_policy ? String(profile.payroll_policy) : '',
+      effectiveFrom: shiftIsoDate(profile.effective_to, 1),
+      effectiveTo: '',
+    });
+  };
+
+  /** Creates the attendance work rule successor used by this module. */
+  const createAttendanceWorkRuleSuccessor = (profile: AttendanceWorkRuleProfileRecord) => {
+    if (!profile.effective_to) {
+      throw new Error('End the current attendance work-rule profile before creating its successor.');
+    }
+
+    setAttendanceWorkRuleFormMode('create');
+    setAttendanceWorkRuleForm({
+      id: null,
+      employee: String(profile.employee),
+      workRule: profile.work_rule,
+      effectiveFrom: shiftIsoDate(profile.effective_to, 1),
+      effectiveTo: '',
+      notes: profile.notes,
     });
   };
 
@@ -1828,6 +2271,7 @@ export default function SalaryStudio() {
                 <label className="salary-studio-field"><span>Work hours per day</span><input className="input" value={policyForm.normalWorkHoursPerDay} onChange={(event) => setPolicyForm({ ...policyForm, normalWorkHoursPerDay: event.target.value })} /></label>
                 <label className="salary-studio-field"><span>Salary days per month</span><input className="input" value={policyForm.salaryDaysPerMonth} onChange={(event) => setPolicyForm({ ...policyForm, salaryDaysPerMonth: event.target.value })} /></label>
                 <label className="salary-studio-field"><span>Overtime multiplier</span><input className="input" value={policyForm.overtimeMultiplier} onChange={(event) => setPolicyForm({ ...policyForm, overtimeMultiplier: event.target.value })} /></label>
+                <label className="salary-studio-field"><span>OT grace minutes</span><input className="input" value={policyForm.overtimeGraceMinutes} onChange={(event) => setPolicyForm({ ...policyForm, overtimeGraceMinutes: event.target.value })} /></label>
                 <label className="salary-studio-field"><span>Late grace minutes</span><input className="input" value={policyForm.lateGraceMinutes} onChange={(event) => setPolicyForm({ ...policyForm, lateGraceMinutes: event.target.value })} /></label>
                 <label className="salary-studio-field"><span>Rounding unit</span><input className="input" value={policyForm.roundingUnitAmount} onChange={(event) => setPolicyForm({ ...policyForm, roundingUnitAmount: event.target.value })} /></label>
                 <label className="salary-studio-field"><span>Absence threshold</span><input className="input" value={policyForm.unapprovedAbsenceIncidentThreshold} onChange={(event) => setPolicyForm({ ...policyForm, unapprovedAbsenceIncidentThreshold: event.target.value })} /></label>
@@ -1887,8 +2331,8 @@ export default function SalaryStudio() {
                             <tr key={row.employee}>
                               <td>{row.employee_name}<span className="salary-studio-table-meta">{row.worker_id || 'No worker id'}</span></td>
                               <td>{formatMoney(row.monthly_base_wage)}</td>
-                              <td>{formatMoney(row.overtime_pay_amount)}</td>
-                              <td>{formatMoney(row.deduction_amount)}</td>
+                              <td>{formatMoney(row.overtime_pay_amount)}<span className="salary-studio-table-meta">Payable {formatMinutes(row.payable_ot_minutes_total)}</span></td>
+                              <td>{formatMoney(row.deduction_amount)}<span className="salary-studio-table-meta">OT offset {formatMinutes(row.approved_ot_offset_minutes_total)}</span></td>
                               <td>{formatMoney(row.attendance_bonus)}</td>
                               <td>{formatMoney(row.gross_payable_amount)}</td>
                             </tr>
@@ -1938,26 +2382,38 @@ export default function SalaryStudio() {
               <SectionTitle
                 eyebrow="Compensation ledger"
                 title="Bind employee packages to the month window."
-                copy="Compensation profiles remain effective-date records so salary changes and trial-period settings do not corrupt historical payroll runs."
+                copy="Compensation profiles are the payroll source of truth for effective-dated salary changes, discretionary social security decisions, and continuous package history."
               />
+              <div className="salary-studio-message-card salary-studio-message-muted">
+                Leave end date blank while a package is still current. Use Terminate on a live row to prefill today, or choose a custom end date before saving. Successor profiles should begin on the very next day so the ledger stays continuous.
+              </div>
+              <div className="salary-studio-message-card salary-studio-message-muted">
+                The ledger table below shows past, current, and future scheduled packages. Future rows can block a new open-ended profile even if they do not apply in {formatMonthYear(selectedYear, selectedMonth)} yet.
+              </div>
               <form
                 className="salary-studio-form-grid salary-studio-form-grid-compact"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void performAction(compensationForm.id === null ? 'Saving compensation profile' : 'Updating compensation profile', saveCompensationProfile);
+                  void performAction(
+                    compensationFormMode === 'create'
+                      ? 'Saving compensation profile'
+                      : compensationFormMode === 'terminate'
+                        ? 'Saving compensation end date'
+                        : 'Updating compensation profile',
+                    saveCompensationProfile,
+                  );
                 }}
               >
-                <label className="salary-studio-field"><span>Employee</span><select className="input" value={compensationForm.employee} onChange={(event) => setCompensationForm({ ...compensationForm, employee: event.target.value })}><option value="">Select employee</option>{employeeOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}{employee.worker_id ? ` (${employee.worker_id})` : ''}</option>)}</select></label>
+                <label className="salary-studio-field"><span>Employee</span><select className="input" value={compensationForm.employee} onChange={(event) => setCompensationForm({ ...compensationForm, employee: event.target.value })} disabled={compensationForm.id !== null}><option value="">Select employee</option>{employeeOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}{employee.worker_id ? ` (${employee.worker_id})` : ''}</option>)}</select></label>
                 <label className="salary-studio-field"><span>Monthly salary</span><input className="input" value={compensationForm.monthlySalary} onChange={(event) => setCompensationForm({ ...compensationForm, monthlySalary: event.target.value })} /></label>
                 <label className="salary-studio-field"><span>Rice allowance override</span><input className="input" value={compensationForm.riceAllowanceAmount} onChange={(event) => setCompensationForm({ ...compensationForm, riceAllowanceAmount: event.target.value })} /></label>
                 <label className="salary-studio-field"><span>Social security override</span><input className="input" value={compensationForm.socialSecurityAllowanceAmount} onChange={(event) => setCompensationForm({ ...compensationForm, socialSecurityAllowanceAmount: event.target.value })} /></label>
                 <label className="salary-studio-field"><span>Policy version</span><select className="input" value={compensationForm.payrollPolicy} onChange={(event) => setCompensationForm({ ...compensationForm, payrollPolicy: event.target.value })}><option value="">Use active period policy</option>{policies.map((policy) => <option key={policy.id} value={policy.id}>{policy.policy_code} v{policy.version_number}</option>)}</select></label>
                 <label className="salary-studio-field"><span>Effective from</span><input className="input" type="date" value={compensationForm.effectiveFrom} onChange={(event) => setCompensationForm({ ...compensationForm, effectiveFrom: event.target.value })} /></label>
-                <label className="salary-studio-field"><span>Effective to</span><input className="input" type="date" value={compensationForm.effectiveTo} onChange={(event) => setCompensationForm({ ...compensationForm, effectiveTo: event.target.value })} /></label>
-                <label className="salary-studio-field"><span>Trial period end</span><input className="input" type="date" value={compensationForm.trialPeriodEndDate} onChange={(event) => setCompensationForm({ ...compensationForm, trialPeriodEndDate: event.target.value })} /></label>
-                <label className="salary-studio-checkbox"><input type="checkbox" checked={compensationForm.eligibleForSocialSecurity} onChange={(event) => setCompensationForm({ ...compensationForm, eligibleForSocialSecurity: event.target.checked })} /><span>Eligible for social security allowance</span></label>
+                <label className="salary-studio-field"><span>End date</span><input className="input" type="date" value={compensationForm.effectiveTo} onChange={(event) => setCompensationForm({ ...compensationForm, effectiveTo: event.target.value })} /></label>
+                <label className="salary-studio-checkbox"><input type="checkbox" checked={compensationForm.eligibleForSocialSecurity} onChange={(event) => setCompensationForm({ ...compensationForm, eligibleForSocialSecurity: event.target.checked })} /><span>Eligible for social security allowance (manual decision)</span></label>
                 <div className="salary-studio-form-actions">
-                  <button className="btn btn-primary" type="submit">{compensationForm.id === null ? 'Save profile' : 'Update profile'}</button>
+                  <button className="btn btn-primary" type="submit">{compensationFormMode === 'create' ? 'Save profile' : compensationFormMode === 'terminate' ? 'Save end date' : 'Update profile'}</button>
                   <button className="btn btn-outline" type="button" onClick={resetCompensationEditor}>Clear editor</button>
                 </div>
               </form>
@@ -1969,24 +2425,154 @@ export default function SalaryStudio() {
                       <th>Employee</th>
                       <th>Monthly salary</th>
                       <th>Policy</th>
+                      <th>Ledger state</th>
                       <th>Window</th>
                       <th>SS</th>
                       <th />
                     </tr>
                   </thead>
                   <tbody>
-                    {compensationProfiles.map((profile) => (
-                      <tr key={profile.id}>
-                        <td>{profile.employee_name || 'Employee'}<span className="salary-studio-table-meta">{profile.worker_id || 'No worker id'}</span></td>
-                        <td>{formatMoney(profile.monthly_salary)}</td>
-                        <td>{profile.payroll_policy_name || 'Active period policy'}</td>
-                        <td>{profile.effective_from}{profile.effective_to ? ` to ${profile.effective_to}` : ' onward'}</td>
-                        <td>{profile.eligible_for_social_security ? 'Eligible' : 'Excluded'}</td>
-                        <td><button className="btn btn-outline salary-studio-mini-button" type="button" onClick={() => editCompensationProfile(profile)}>Edit</button></td>
-                      </tr>
-                    ))}
+                    {compensationProfiles.map((profile) => {
+                      const timing = getCompensationProfileTiming(profile, selectedYear, selectedMonth);
+
+                      return (
+                        <tr key={profile.id}>
+                          <td>{profile.employee_name || 'Employee'}<span className="salary-studio-table-meta">{profile.worker_id || 'No worker id'}</span></td>
+                          <td>{formatMoney(profile.monthly_salary)}</td>
+                          <td>{profile.payroll_policy_name || 'Active period policy'}</td>
+                          <td>
+                            <span className={`salary-studio-badge ${timing.tone === 'selected-month' ? 'status-tone-positive' : timing.tone === 'future' ? 'status-tone-warning' : 'status-tone-muted'}`}>
+                              {timing.label}
+                            </span>
+                          </td>
+                          <td>{profile.effective_from}{profile.effective_to ? ` to ${profile.effective_to}` : ' onward'}</td>
+                          <td>{profile.eligible_for_social_security ? 'Eligible' : 'Excluded'}</td>
+                          <td>
+                            <div className="salary-studio-inline-actions">
+                              <button className="btn btn-outline salary-studio-mini-button" type="button" onClick={() => editCompensationProfile(profile)}>Edit</button>
+                              {profile.effective_to ? (
+                                <button className="btn btn-outline salary-studio-mini-button" type="button" onClick={() => createCompensationSuccessor(profile)}>Successor</button>
+                              ) : (
+                                <button className="btn btn-outline salary-studio-mini-button" type="button" onClick={() => beginCompensationTermination(profile)}>Terminate</button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+              </div>
+            </article>
+
+            <article className="salary-studio-panel card card-glass">
+              <SectionTitle
+                eyebrow="Attendance work rules"
+                title="Choose when early leave becomes absence or driver time bank."
+                copy="Without any profile, the employee follows the default standard rule. Late minutes still consume approved OT first for everyone; the driver rule only changes how early departures are treated."
+              />
+              <div className="salary-studio-message-card salary-studio-message-muted">
+                Use Standard when early leave should count as absence. Use Driver time bank when approved early release should create time debt that same-month approved OT must repay before any OT pay is released. Any unpaid debt is forgiven when the next month starts.
+              </div>
+              <form
+                className="salary-studio-form-grid salary-studio-form-grid-compact"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void performAction(
+                    attendanceWorkRuleFormMode === 'create'
+                      ? 'Saving attendance work-rule profile'
+                      : attendanceWorkRuleFormMode === 'terminate'
+                        ? 'Saving attendance work-rule end date'
+                        : 'Updating attendance work-rule profile',
+                    saveAttendanceWorkRuleProfile,
+                  );
+                }}
+              >
+                <label className="salary-studio-field"><span>Employee</span><select className="input" value={attendanceWorkRuleForm.employee} onChange={(event) => setAttendanceWorkRuleForm({ ...attendanceWorkRuleForm, employee: event.target.value })} disabled={attendanceWorkRuleForm.id !== null}><option value="">Select employee</option>{employeeOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}{employee.worker_id ? ` (${employee.worker_id})` : ''}</option>)}</select></label>
+                <label className="salary-studio-field"><span>Rule</span><select className="input" value={attendanceWorkRuleForm.workRule} onChange={(event) => setAttendanceWorkRuleForm({ ...attendanceWorkRuleForm, workRule: event.target.value as AttendanceWorkRule })}><option value="standard">Standard</option><option value="driver_time_bank">Driver time bank</option></select></label>
+                <label className="salary-studio-field"><span>Effective from</span><input className="input" type="date" value={attendanceWorkRuleForm.effectiveFrom} onChange={(event) => setAttendanceWorkRuleForm({ ...attendanceWorkRuleForm, effectiveFrom: event.target.value })} /></label>
+                <label className="salary-studio-field"><span>End date</span><input className="input" type="date" value={attendanceWorkRuleForm.effectiveTo} onChange={(event) => setAttendanceWorkRuleForm({ ...attendanceWorkRuleForm, effectiveTo: event.target.value })} /></label>
+                <label className="salary-studio-field salary-studio-field-wide"><span>Notes</span><input className="input" value={attendanceWorkRuleForm.notes} onChange={(event) => setAttendanceWorkRuleForm({ ...attendanceWorkRuleForm, notes: event.target.value })} placeholder="Optional reason or operating note" /></label>
+                <div className="salary-studio-form-actions">
+                  <button className="btn btn-primary" type="submit">{attendanceWorkRuleFormMode === 'create' ? 'Save rule profile' : attendanceWorkRuleFormMode === 'terminate' ? 'Save end date' : 'Update rule profile'}</button>
+                  <button className="btn btn-outline" type="button" onClick={resetAttendanceWorkRuleEditor}>Clear editor</button>
+                </div>
+              </form>
+
+              <div className="salary-studio-table-shell">
+                <table className="salary-studio-table">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Rule</th>
+                      <th>Ledger state</th>
+                      <th>Window</th>
+                      <th>Notes</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attendanceWorkRuleProfiles.map((profile) => {
+                      const timing = getAttendanceWorkRuleTiming(profile, selectedYear, selectedMonth);
+
+                      return (
+                        <tr key={profile.id}>
+                          <td>{profile.employee_name || 'Employee'}<span className="salary-studio-table-meta">{profile.worker_id || 'No worker id'}</span></td>
+                          <td>{formatAttendanceWorkRuleLabel(profile.work_rule)}</td>
+                          <td>
+                            <span className={`salary-studio-badge ${timing.tone === 'selected-month' ? 'status-tone-positive' : timing.tone === 'future' ? 'status-tone-warning' : 'status-tone-muted'}`}>
+                              {timing.label}
+                            </span>
+                          </td>
+                          <td>{profile.effective_from}{profile.effective_to ? ` to ${profile.effective_to}` : ' onward'}</td>
+                          <td>{profile.notes || '—'}</td>
+                          <td>
+                            <div className="salary-studio-inline-actions">
+                              <button className="btn btn-outline salary-studio-mini-button" type="button" onClick={() => editAttendanceWorkRuleProfile(profile)}>Edit</button>
+                              {profile.effective_to ? (
+                                <button className="btn btn-outline salary-studio-mini-button" type="button" onClick={() => createAttendanceWorkRuleSuccessor(profile)}>Successor</button>
+                              ) : (
+                                <button className="btn btn-outline salary-studio-mini-button" type="button" onClick={() => beginAttendanceWorkRuleTermination(profile)}>Terminate</button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="salary-studio-table-shell">
+                <table className="salary-studio-table">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Opening bank</th>
+                      <th>Current month debt</th>
+                      <th>Open balance now</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attendanceSummaries
+                      .filter((summary) => (openingTimeBankByEmployee.get(summary.employee) || 0) > 0 || summary.time_bank_minutes_total > 0)
+                      .map((summary) => {
+                        const openingMinutes = openingTimeBankByEmployee.get(summary.employee) || 0;
+                        const openBalance = openingMinutes + summary.time_bank_minutes_total;
+                        return (
+                          <tr key={`time-bank-${summary.employee}`}>
+                            <td>{summary.employee_name || 'Employee'}<span className="salary-studio-table-meta">{summary.worker_id || 'No worker id'}</span></td>
+                            <td>{formatMinutes(openingMinutes)}<span className="salary-studio-table-meta">Resets monthly</span></td>
+                            <td>{formatMinutes(summary.time_bank_minutes_total)}</td>
+                            <td>{formatMinutes(openBalance)}</td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+                {attendanceSummaries.filter((summary) => (openingTimeBankByEmployee.get(summary.employee) || 0) > 0 || summary.time_bank_minutes_total > 0).length === 0 ? (
+                  <div className="salary-studio-empty-state">No open driver time-bank debt around the selected month.</div>
+                ) : null}
               </div>
             </article>
           </div>
@@ -2009,15 +2595,27 @@ export default function SalaryStudio() {
                 className="salary-studio-form-grid salary-studio-form-grid-compact"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void performAction('Saving payroll adjustment', saveAdjustment);
+                  void performAction(
+                    adjustmentForm.id === null ? 'Saving payroll adjustment' : 'Updating payroll adjustment',
+                    saveAdjustment,
+                  );
                 }}
               >
                 <label className="salary-studio-field"><span>Employee</span><select className="input" value={adjustmentForm.employee} onChange={(event) => setAdjustmentForm({ ...adjustmentForm, employee: event.target.value })}><option value="">Select employee</option>{employeeOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label>
                 <label className="salary-studio-field"><span>Type</span><select className="input" value={adjustmentForm.adjustmentType} onChange={(event) => setAdjustmentForm({ ...adjustmentForm, adjustmentType: event.target.value })}>{ADJUSTMENT_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-                <label className="salary-studio-field"><span>Amount</span><input className="input" value={adjustmentForm.amount} onChange={(event) => setAdjustmentForm({ ...adjustmentForm, amount: event.target.value })} /></label>
+                <label className="salary-studio-field"><span>Amount</span><input className="input" type="number" min="0" step="0.01" inputMode="decimal" value={adjustmentForm.amount} onChange={(event) => setAdjustmentForm({ ...adjustmentForm, amount: event.target.value })} /></label>
+                <label className="salary-studio-field"><span>Repeat monthly until</span><input className="input" type="date" value={adjustmentForm.repeatUntil} disabled={adjustmentForm.id !== null} onChange={(event) => setAdjustmentForm({ ...adjustmentForm, repeatUntil: event.target.value })} /></label>
                 <label className="salary-studio-field salary-studio-field-wide"><span>Notes</span><input className="input" value={adjustmentForm.notes} onChange={(event) => setAdjustmentForm({ ...adjustmentForm, notes: event.target.value })} /></label>
+                <div className="muted" style={{ gridColumn: '1 / -1' }}>
+                  {adjustmentTypeBehavesAsDeduction(adjustmentForm.adjustmentType)
+                    ? 'Wage advances and manual deductions reduce approved pay. Enter the face value only; payroll stores the deduction sign for you.'
+                    : 'Set a repeat-until month only when you want the same adjustment pre-seeded across future payroll months. Blank keeps this as a one-off item.'}
+                </div>
+                <div className="muted" style={{ gridColumn: '1 / -1' }}>
+                  Open-ended or infinite recurrence is not stored yet. If a task keeps repeating, set the next stop month and reseed again later if needed.
+                </div>
                 <div className="salary-studio-form-actions">
-                  <button className="btn btn-primary" type="submit">Add adjustment</button>
+                  <button className="btn btn-primary" type="submit">{adjustmentForm.id === null ? 'Add adjustment' : 'Update adjustment'}</button>
                   <button className="btn btn-outline" type="button" onClick={resetAdjustmentEditor}>Clear</button>
                 </div>
               </form>
@@ -2027,7 +2625,7 @@ export default function SalaryStudio() {
                   <thead>
                     <tr>
                       <th>Employee</th>
-                      <th>Approved total</th>
+                      <th>Approved net</th>
                       <th>Pending items</th>
                       <th>Latest note</th>
                     </tr>
@@ -2035,12 +2633,33 @@ export default function SalaryStudio() {
                   <tbody>
                     {employeeOptions.map((employee) => {
                       const employeeAdjustments = adjustments.filter((adjustment) => adjustment.employee === employee.id);
-                      const latestNote = employeeAdjustments[employeeAdjustments.length - 1]?.notes || 'No items yet';
+                      const approvedAdjustments = employeeAdjustments.filter((adjustment) => adjustment.approval_status === 'approved');
+                      const pendingAdjustments = employeeAdjustments.filter((adjustment) => adjustment.approval_status === 'pending');
+                      const latestNote = employeeAdjustments[0]?.notes || 'No items yet';
                       return (
                         <tr key={employee.id}>
                           <td>{employee.name}<span className="salary-studio-table-meta">{employee.worker_id || 'No worker id'}</span></td>
-                          <td>{formatMoney(employeeAdjustments.filter((adjustment) => adjustment.approval_status === 'approved').reduce((sum, adjustment) => sum + Number(adjustment.amount), 0))}</td>
-                          <td>{employeeAdjustments.filter((adjustment) => adjustment.approval_status === 'pending').length}</td>
+                          <td>
+                            <div style={{ display: 'grid', gap: '0.45rem' }}>
+                              <span>{formatMoney(approvedAdjustments.reduce((sum, adjustment) => sum + Number(adjustment.amount), 0))}</span>
+                              {approvedAdjustments.length > 0 ? (
+                                <details>
+                                  <summary style={{ cursor: 'pointer' }}>{approvedAdjustments.length} approved {approvedAdjustments.length === 1 ? 'item' : 'items'}</summary>
+                                  <div style={{ display: 'grid', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                    {approvedAdjustments.map((adjustment) => (
+                                      <div key={adjustment.id} style={{ display: 'grid', gap: '0.15rem' }}>
+                                        <span>{formatAdjustmentTypeLabel(adjustment.adjustment_type)} · {formatSignedMoney(adjustment.amount)}</span>
+                                        <span className="salary-studio-table-meta">{adjustment.notes || formatMonthYear(adjustment.year, adjustment.month)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              ) : (
+                                <span className="salary-studio-table-meta">No approved items</span>
+                              )}
+                            </div>
+                          </td>
+                          <td>{pendingAdjustments.length}</td>
                           <td>{latestNote}</td>
                         </tr>
                       );
@@ -2055,7 +2674,7 @@ export default function SalaryStudio() {
                     <div className="salary-studio-record-topline">
                       <div>
                         <strong>{adjustment.employee_name || 'Employee'}</strong>
-                        <div className="salary-studio-record-meta">{adjustment.adjustment_type.replaceAll('_', ' ')}</div>
+                        <div className="salary-studio-record-meta">{formatAdjustmentTypeLabel(adjustment.adjustment_type)}</div>
                       </div>
                       <span className={`salary-studio-badge ${statusToneClass(adjustment.approval_status)}`}>{adjustment.approval_status}</span>
                     </div>
@@ -2064,11 +2683,18 @@ export default function SalaryStudio() {
                       <span>{formatSignedMoney(adjustment.amount)}</span>
                     </div>
                     <p className="salary-studio-record-note">{adjustment.notes || 'No notes provided.'}</p>
-                    {adjustment.approval_status === 'pending' ? (
-                      <div className="salary-studio-inline-actions">
+                    <div className="salary-studio-inline-actions">
+                      {adjustment.approval_status === 'pending' ? (
                         <button className="btn btn-outline" type="button" onClick={() => void performAction('Approving adjustment', async () => approveAdjustment(adjustment.id))}>Approve</button>
-                      </div>
-                    ) : null}
+                      ) : null}
+                      <button className="btn btn-outline" type="button" onClick={() => editAdjustment(adjustment)}>Edit</button>
+                      <button className="btn btn-outline" type="button" onClick={() => {
+                        if (!window.confirm(`Delete ${formatAdjustmentTypeLabel(adjustment.adjustment_type)} for ${adjustment.employee_name || 'this employee'}?`)) {
+                          return;
+                        }
+                        void performAction('Deleting adjustment', async () => deleteAdjustment(adjustment.id));
+                      }}>Delete</button>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -2315,7 +2941,9 @@ export default function SalaryStudio() {
                       <th>Scheduled</th>
                       <th>Present</th>
                       <th>Late</th>
+                      <th>Early leave</th>
                       <th>Absent</th>
+                      <th>Time bank</th>
                       <th>Approved leave</th>
                       <th>Unapproved leave</th>
                       <th>Approved OT</th>
@@ -2329,7 +2957,9 @@ export default function SalaryStudio() {
                         <td>{summary.scheduled_work_days} days</td>
                         <td>{summary.actual_present_days} days</td>
                         <td>{formatMinutes(summary.late_minutes_total)}</td>
+                        <td>{formatMinutes(summary.early_departure_minutes_total)}</td>
                         <td>{formatMinutes(summary.absent_minutes_total)}</td>
+                        <td>{formatMinutes(summary.time_bank_minutes_total)}</td>
                         <td>{formatMinutes(summary.approved_leave_minutes_total)}</td>
                         <td>{formatMinutes(summary.unapproved_leave_minutes_total)}</td>
                         <td>{formatMinutes(summary.approved_ot_minutes_total)}</td>
@@ -2404,6 +3034,7 @@ export default function SalaryStudio() {
                           <MetricCard label="Gross payable" value={formatMoney(selectedRunSummary.total_gross_payable_amount)} tone="accent" />
                           <MetricCard label="Total deductions" value={formatMoney(selectedRunSummary.total_deduction_amount)} />
                           <MetricCard label="Overtime pay" value={formatMoney(selectedRunSummary.total_approved_overtime_pay_amount)} tone="positive" />
+                          <MetricCard label="Payable OT" value={formatMinutes(selectedRunSummary.total_payable_ot_minutes)} tone="positive" />
                           <MetricCard label="Carry-forward recovery" value={formatMoney(selectedRunSummary.total_carry_forward_recovery_amount)} />
                         </div>
                       ) : null}
@@ -2420,8 +3051,14 @@ export default function SalaryStudio() {
                                 <span>Base {formatMoney(employeeRun.monthly_base_wage_amount)}</span>
                                 <span>Attendance bonus {formatMoney(employeeRun.attendance_bonus_amount)}</span>
                                 <span>Late {formatMinutes(employeeRun.late_minutes_total)}</span>
+                                <span>Early leave {formatMinutes(employeeRun.early_departure_minutes_total)}</span>
                                 <span>Absent {formatMinutes(employeeRun.absent_minutes_total)}</span>
                                 <span>Approved OT {formatMinutes(employeeRun.approved_ot_minutes_total)}</span>
+                                <span>OT offset {formatMinutes(employeeRun.approved_ot_offset_minutes_total)}</span>
+                                <span>Payable OT {formatMinutes(employeeRun.payable_ot_minutes_total)}</span>
+                                <span>Time bank open {formatMinutes(employeeRun.opening_time_bank_minutes_total)}</span>
+                                <span>Time bank settled {formatMinutes(employeeRun.settled_time_bank_minutes_total)}</span>
+                                <span>Time bank close {formatMinutes(employeeRun.closing_time_bank_minutes_total)}</span>
                                 <span>Project bonus {formatMoney(employeeRun.project_bonus_amount)}</span>
                               </div>
                               <div className="salary-studio-component-list">
@@ -2577,7 +3214,7 @@ export default function SalaryStudio() {
                     <MetricCard label="Headcount paid" value={String(workforceReportPreview.monthly_summary.headcount_paid)} />
                     <MetricCard label="Gross payable" value={formatMoney(workforceReportPreview.monthly_summary.total_gross_payable_amount)} tone="accent" />
                     <MetricCard label="Total deductions" value={formatMoney(workforceReportPreview.monthly_summary.total_deduction_amount)} />
-                    <MetricCard label="Approved overtime" value={formatMinutes(workforceReportPreview.monthly_summary.total_approved_ot_minutes)} tone="positive" />
+                    <MetricCard label="Payable OT" value={formatMinutes(workforceReportPreview.monthly_summary.total_payable_ot_minutes)} tone="positive" />
                   </div>
                   <div className="salary-studio-table-shell">
                     <table className="salary-studio-table">
@@ -2587,6 +3224,8 @@ export default function SalaryStudio() {
                           <th>Gross payable</th>
                           <th>Late</th>
                           <th>Approved OT</th>
+                          <th>Payable OT</th>
+                          <th>Time bank close</th>
                           <th>Project bonus</th>
                         </tr>
                       </thead>
@@ -2597,6 +3236,8 @@ export default function SalaryStudio() {
                             <td>{formatMoney(row.gross_payable_amount)}</td>
                             <td>{formatMinutes(row.late_minutes_total)}</td>
                             <td>{formatMinutes(row.approved_ot_minutes_total)}</td>
+                            <td>{formatMinutes(row.payable_ot_minutes_total)}</td>
+                            <td>{formatMinutes(row.closing_time_bank_minutes_total)}</td>
                             <td>{formatMoney(row.project_bonus_amount)}</td>
                           </tr>
                         ))}
@@ -2626,7 +3267,8 @@ export default function SalaryStudio() {
                   </div>
                   <div className="salary-studio-metric-grid salary-studio-metric-grid-tight">
                     <MetricCard label="Late minutes" value={formatMinutes(employeeReportPreview.attendance_summary.late_minutes_total)} />
-                    <MetricCard label="Approved OT" value={formatMinutes(employeeReportPreview.attendance_summary.approved_ot_minutes_total)} tone="positive" />
+                    <MetricCard label="Payable OT" value={formatMinutes(employeeReportPreview.attendance_summary.payable_ot_minutes_total)} tone="positive" />
+                    <MetricCard label="Time bank close" value={formatMinutes(employeeReportPreview.attendance_summary.closing_time_bank_minutes_total)} />
                     <MetricCard label="Gross before rounding" value={formatMoney(employeeReportPreview.gross_before_rounding_amount)} />
                     <MetricCard label="Rounding adjustment" value={formatSignedMoney(employeeReportPreview.rounding_adjustment_amount)} tone="accent" />
                   </div>

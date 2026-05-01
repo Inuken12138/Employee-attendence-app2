@@ -1,3 +1,10 @@
+"""Payroll calculation and report-generation services.
+
+This module is the backend's payroll engine. It rebuilds attendance summaries,
+tracks paid-rest balances, calculates payroll runs, settles construction bonus
+pools, generates correction deltas, and produces exportable report artifacts.
+"""
+
 import calendar
 import hashlib
 import json
@@ -16,9 +23,11 @@ from PIL import Image, ImageDraw, ImageFont
 from .models import (
     AttendanceMonthlySummary,
     AttendanceRecord,
+    AttendanceTimeBankEntry,
     ConstructionProject,
     ConstructionProjectSettlement,
     Employee,
+    EmployeeAttendanceWorkRuleProfile,
     EmployeeCompensationProfile,
     EmployeePayrollAdjustment,
     EmployeePayrollCarryForwardBalance,
@@ -46,6 +55,8 @@ DEFAULT_AFTERNOON_END = '17:00'
 
 @dataclass
 class CompensationContext:
+    """Resolved compensation inputs used while calculating one employee's pay."""
+
     profile: EmployeeCompensationProfile | None
     monthly_salary: Decimal
     rice_allowance_amount: Decimal
@@ -56,6 +67,8 @@ class CompensationContext:
 
 
 def _decimal(value) -> Decimal:
+    """Convert arbitrary numeric-like input into a Decimal."""
+
     if isinstance(value, Decimal):
         return value
     if value is None or value == '':
@@ -64,14 +77,20 @@ def _decimal(value) -> Decimal:
 
 
 def _money(value) -> Decimal:
+    """Quantize a value to money precision used throughout payroll."""
+
     return _decimal(value).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
 
 
 def _day_quantity(value) -> Decimal:
+    """Quantize a value to the day precision used for paid-rest balances."""
+
     return _decimal(value).quantize(DAYS_QUANTUM, rounding=ROUND_HALF_UP)
 
 
 def _divide_decimal(numerator: Decimal, denominator: Decimal | int | float) -> Decimal:
+    """Safely divide Decimals and return zero when the denominator is zero."""
+
     denominator_decimal = _decimal(denominator)
     if denominator_decimal == 0:
         return Decimal('0')
@@ -79,6 +98,8 @@ def _divide_decimal(numerator: Decimal, denominator: Decimal | int | float) -> D
 
 
 def _round_to_unit(amount: Decimal, unit_amount: int) -> Decimal:
+    """Round a monetary amount to the configured payroll payout unit."""
+
     unit_decimal = _decimal(unit_amount)
     if unit_decimal <= 0:
         return _money(amount)
@@ -87,6 +108,8 @@ def _round_to_unit(amount: Decimal, unit_amount: int) -> Decimal:
 
 
 def _serialize_for_json(value):
+    """Convert Decimals and dates into JSON-friendly primitive values."""
+
     if isinstance(value, Decimal):
         return format(value.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP), 'f')
     if isinstance(value, date):
@@ -99,6 +122,8 @@ def _serialize_for_json(value):
 
 
 def _parse_time_to_minutes(value: str) -> int | None:
+    """Convert an ``HH:MM`` time string into minutes since midnight."""
+
     normalized_value = normalize_clock_time(value)
     if not normalized_value:
         return None
@@ -108,6 +133,8 @@ def _parse_time_to_minutes(value: str) -> int | None:
 
 
 def _minutes_between(start_time: str, end_time: str) -> int:
+    """Return positive elapsed minutes between two clock times."""
+
     start_minutes = _parse_time_to_minutes(start_time)
     end_minutes = _parse_time_to_minutes(end_time)
     if start_minutes is None or end_minutes is None or end_minutes <= start_minutes:
@@ -116,18 +143,63 @@ def _minutes_between(start_time: str, end_time: str) -> int:
 
 
 def _month_date_range(year: int, month: int) -> tuple[date, date]:
+    """Return the first and last calendar day of a payroll month."""
+
     last_day = calendar.monthrange(year, month)[1]
     return date(year, month, 1), date(year, month, last_day)
 
 
 def _previous_month(year: int, month: int) -> tuple[int, int]:
+    """Return the year/month tuple immediately before the given month."""
+
     if month == 1:
         return year - 1, 12
     return year, month - 1
 
 
 def _get_active_payroll_employees() -> list[Employee]:
+    """Return all active employees in the standard payroll ordering."""
+
     return list(Employee.objects.filter(is_active=True).order_by('name', 'id'))
+
+
+def _build_time_bank_opening_totals(year: int, month: int) -> dict[int, int]:
+    """Return opening time-bank totals per employee.
+
+    The current implementation keeps this as an empty map because the present
+    payroll flow does not persist a separate monthly opening snapshot.
+    """
+
+    return {}
+
+
+def _sync_time_bank_debt_entries(employee: Employee, start_date: date, end_date: date, debt_entries: list[dict]) -> int:
+    """Rewrite a driver's time-bank debt entries for a target period."""
+
+    AttendanceTimeBankEntry.objects.filter(
+        employee=employee,
+        entry_type=AttendanceTimeBankEntry.ENTRY_TYPE_EARLY_DEPARTURE_DEBT,
+        entry_date__gte=start_date,
+        entry_date__lte=end_date,
+    ).delete()
+
+    total_minutes = 0
+    for debt_entry in debt_entries:
+        minutes = int(debt_entry['minutes'])
+        if minutes <= 0:
+            continue
+
+        AttendanceTimeBankEntry.objects.create(
+            employee=employee,
+            entry_type=AttendanceTimeBankEntry.ENTRY_TYPE_EARLY_DEPARTURE_DEBT,
+            entry_date=debt_entry['entry_date'],
+            attendance_shift=debt_entry['attendance_shift'],
+            minutes_delta=-minutes,
+            notes='Driver early departure time-bank debt.',
+        )
+        total_minutes += minutes
+
+    return total_minutes
 
 
 def rebuild_paid_rest_balances(
@@ -135,6 +207,8 @@ def rebuild_paid_rest_balances(
     month: int,
     employee_ids: list[int] | None = None,
 ) -> list[EmployeePaidRestMonthlyBalance]:
+    """Recalculate monthly paid-rest balances up to the requested month."""
+
     if month < 1 or month > 12:
         raise ValueError('Month must be between 1 and 12.')
 
@@ -239,6 +313,8 @@ def rebuild_paid_rest_balances(
 
 
 def ensure_finalized_attendance_coverage(year: int, month: int, employees: list[Employee] | None = None) -> AttendanceRecord:
+    """Ensure finalized attendance exists for every employee included in payroll."""
+
     payroll_employees = employees if employees is not None else _get_active_payroll_employees()
     final_record = AttendanceRecord.objects.filter(year=year, month=month, status='final').first()
     if final_record is None:
@@ -261,12 +337,16 @@ def ensure_finalized_attendance_coverage(year: int, month: int, employees: list[
 
 
 def _next_month(year: int, month: int) -> tuple[int, int]:
+    """Return the year/month tuple immediately after the given month."""
+
     if month == 12:
         return year + 1, 1
     return year, month + 1
 
 
 def get_active_payroll_policy(year: int, month: int, policy_id: int | None = None) -> PayrollPolicy:
+    """Resolve which payroll policy should govern the requested period."""
+
     target_date = date(year, month, 1)
     queryset = PayrollPolicy.objects.all()
     if policy_id is not None:
@@ -296,27 +376,25 @@ def get_active_payroll_policy(year: int, month: int, policy_id: int | None = Non
 
 
 def resolve_employee_compensation(employee: Employee, period_date: date, default_policy: PayrollPolicy) -> CompensationContext:
-    profile = employee.compensation_profiles.filter(
-        effective_from__lte=period_date,
-    ).filter(
-        Q(effective_to__isnull=True) | Q(effective_to__gte=period_date)
-    ).select_related('payroll_policy').order_by('-effective_from', '-id').first()
+    """Resolve the employee's active compensation ledger entry plus policy fallbacks."""
 
-    policy = profile.payroll_policy if profile and profile.payroll_policy else default_policy
-    monthly_salary = _money(profile.monthly_salary if profile else employee.base_salary)
+    profile = employee.active_compensation_profile(period_date)
+    if profile is None:
+        employee_label = employee.worker_id or employee.name or f'Employee {employee.pk}'
+        raise ValueError(
+            f'No compensation profile is active for {employee_label} on {period_date.isoformat()}. '
+            'Create a compensation ledger entry before running payroll or project settlement.'
+        )
+
+    policy = profile.payroll_policy if profile.payroll_policy else default_policy
+    monthly_salary = _money(profile.monthly_salary)
     rice_allowance_amount = _money(
-        profile.rice_allowance_amount if profile and profile.rice_allowance_amount is not None else policy.rice_allowance_amount
+        profile.rice_allowance_amount if profile.rice_allowance_amount is not None else policy.rice_allowance_amount
     )
     social_security_allowance_amount = _money(
-        profile.social_security_allowance_amount
-        if profile and profile.social_security_allowance_amount is not None
-        else policy.social_security_allowance_amount
+        profile.social_security_allowance_amount if profile.social_security_allowance_amount is not None else policy.social_security_allowance_amount
     )
-    eligible_for_social_security = True
-    if profile is not None:
-        eligible_for_social_security = profile.eligible_for_social_security
-        if profile.trial_period_end_date and period_date <= profile.trial_period_end_date:
-            eligible_for_social_security = False
+    eligible_for_social_security = profile.eligible_for_social_security
 
     monthly_base_wage = monthly_salary + rice_allowance_amount
     if eligible_for_social_security:
@@ -334,6 +412,8 @@ def resolve_employee_compensation(employee: Employee, period_date: date, default
 
 
 def _default_roster_day(target_date: date, policy: PayrollPolicy) -> dict:
+    """Return the fallback roster day used when no employee-specific roster exists."""
+
     half_day_minutes = int((_decimal(policy.normal_work_hours_per_day) * Decimal('60')) / Decimal('2'))
     afternoon_end_minutes = _parse_time_to_minutes(DEFAULT_AFTERNOON_START) + half_day_minutes
     afternoon_end_hour = afternoon_end_minutes // 60
@@ -348,6 +428,8 @@ def _default_roster_day(target_date: date, policy: PayrollPolicy) -> dict:
 
 
 def _resolve_employee_roster_day(employee: Employee, target_date: date, policy: PayrollPolicy) -> dict:
+    """Resolve the effective roster day for an employee on a specific date."""
+
     try:
         assignment = employee.roster_assignment
     except EmployeeRosterAssignment.DoesNotExist:
@@ -371,6 +453,8 @@ def _resolve_employee_roster_day(employee: Employee, target_date: date, policy: 
 
 
 def _build_attendance_record_employee_map(record: AttendanceRecord | None) -> dict[int, object]:
+    """Index finalized attendance rows by employee id for summary rebuilds."""
+
     if record is None:
         return {}
 
@@ -382,6 +466,8 @@ def _build_attendance_record_employee_map(record: AttendanceRecord | None) -> di
 
 
 def rebuild_attendance_summaries(year: int, month: int, employee_ids: list[int] | None = None, policy: PayrollPolicy | None = None) -> list[AttendanceMonthlySummary]:
+    """Recalculate monthly attendance summaries that later feed payroll generation."""
+
     selected_policy = policy or get_active_payroll_policy(year, month)
     target_start_date, target_end_date = _month_date_range(year, month)
     employees_queryset = Employee.objects.filter(is_active=True).order_by('name', 'id')
@@ -400,7 +486,9 @@ def rebuild_attendance_summaries(year: int, month: int, employee_ids: list[int] 
             'scheduled_minutes_total': 0,
             'worked_minutes_total': 0,
             'late_minutes_total': 0,
+            'early_departure_minutes_total': 0,
             'absent_minutes_total': 0,
+            'time_bank_minutes_total': 0,
             'paid_rest_minutes_total': 0,
             'approved_leave_minutes_total': 0,
             'unapproved_leave_minutes_total': 0,
@@ -422,7 +510,9 @@ def rebuild_attendance_summaries(year: int, month: int, employee_ids: list[int] 
         scheduled_minutes_total = 0
         worked_minutes_total = 0
         late_minutes_total = 0
+        early_departure_minutes_total = 0
         absent_minutes_total = 0
+        time_bank_debt_entries = []
         paid_rest_minutes_total = 0
 
         current_day = target_start_date
@@ -447,6 +537,22 @@ def rebuild_attendance_summaries(year: int, month: int, employee_ids: list[int] 
                         scheduled_in_minutes = _parse_time_to_minutes(scheduled_start)
                         if actual_in_minutes is not None and scheduled_in_minutes is not None and actual_in_minutes > scheduled_in_minutes:
                             late_minutes_total += max(actual_in_minutes - scheduled_in_minutes - grace_minutes, 0)
+
+                        actual_out_minutes = _parse_time_to_minutes(actual_out)
+                        scheduled_out_minutes = _parse_time_to_minutes(scheduled_end)
+                        if actual_out_minutes is not None and scheduled_out_minutes is not None and actual_out_minutes < scheduled_out_minutes:
+                            early_departure_minutes = scheduled_out_minutes - actual_out_minutes
+                            early_departure_minutes_total += early_departure_minutes
+                            if employee.active_attendance_work_rule(current_day) == EmployeeAttendanceWorkRuleProfile.WORK_RULE_DRIVER_TIME_BANK:
+                                time_bank_debt_entries.append(
+                                    {
+                                        'entry_date': current_day,
+                                        'attendance_shift': shift_key,
+                                        'minutes': early_departure_minutes,
+                                    }
+                                )
+                            else:
+                                absent_minutes_total += early_departure_minutes
                     elif status == 'paid_rest':
                         paid_rest_minutes_total += scheduled_minutes
                     elif status == 'absent':
@@ -484,11 +590,14 @@ def rebuild_attendance_summaries(year: int, month: int, employee_ids: list[int] 
         potential_ot_minutes_total = sum(decision.potential_ot_minutes for decision in overtime_decisions)
         approved_ot_minutes_total = sum(decision.approved_ot_minutes for decision in overtime_decisions)
         denied_ot_minutes_total = sum(decision.denied_ot_minutes for decision in overtime_decisions)
+        time_bank_minutes_total = _sync_time_bank_debt_entries(employee, target_start_date, target_end_date, time_bank_debt_entries)
 
         full_attendance_eligible = bool(final_record) and all(
             [
                 late_minutes_total == 0,
+                early_departure_minutes_total == 0,
                 absent_minutes_total == 0,
+                time_bank_minutes_total == 0,
                 approved_leave_minutes_total == 0,
                 unapproved_leave_minutes_total == 0,
             ]
@@ -509,7 +618,9 @@ def rebuild_attendance_summaries(year: int, month: int, employee_ids: list[int] 
                 'scheduled_minutes_total': scheduled_minutes_total,
                 'worked_minutes_total': worked_minutes_total,
                 'late_minutes_total': late_minutes_total,
+                'early_departure_minutes_total': early_departure_minutes_total,
                 'absent_minutes_total': absent_minutes_total,
+                'time_bank_minutes_total': time_bank_minutes_total,
                 'paid_rest_minutes_total': paid_rest_minutes_total,
                 'approved_leave_minutes_total': approved_leave_minutes_total,
                 'unapproved_leave_minutes_total': unapproved_leave_minutes_total,
@@ -526,6 +637,8 @@ def rebuild_attendance_summaries(year: int, month: int, employee_ids: list[int] 
 
 
 def _build_adjustment_totals(year: int, month: int) -> dict[int, Decimal]:
+    """Aggregate approved manual payroll adjustments per employee."""
+
     totals = {}
     queryset = EmployeePayrollAdjustment.objects.filter(
         year=year,
@@ -539,6 +652,8 @@ def _build_adjustment_totals(year: int, month: int) -> dict[int, Decimal]:
 
 
 def _build_settlement_totals(year: int, month: int) -> dict[int, Decimal]:
+    """Aggregate construction bonus settlements that belong to the payroll month."""
+
     totals = {}
     queryset = ConstructionProjectSettlement.objects.filter(
         settled_to_year=year,
@@ -551,6 +666,8 @@ def _build_settlement_totals(year: int, month: int) -> dict[int, Decimal]:
 
 
 def _build_carry_forward_totals(year: int, month: int) -> dict[int, Decimal]:
+    """Aggregate carry-forward recovery amounts scheduled for the payroll month."""
+
     totals = {}
     queryset = EmployeePayrollCarryForwardBalance.objects.filter(
         status__in=('open', 'partially_applied'),
@@ -564,6 +681,8 @@ def _build_carry_forward_totals(year: int, month: int) -> dict[int, Decimal]:
 
 
 def _build_previous_run_employee_map(payroll_run: PayrollRun | None) -> dict[int, PayrollRunEmployee]:
+    """Index payroll-run employee rows by employee id for correction comparisons."""
+
     if payroll_run is None:
         return {}
     return {
@@ -576,13 +695,17 @@ def _component_payloads(
     attendance_summary: AttendanceMonthlySummary,
     monthly_base_wage: Decimal,
     attendance_bonus_amount: Decimal,
+    deductible_minutes_total: int,
     deduction_amount: Decimal,
+    payable_ot_minutes_total: int,
     overtime_pay_amount: Decimal,
     manual_adjustments_amount: Decimal,
     project_bonus_amount: Decimal,
     carry_forward_recovery_amount: Decimal,
     rounding_adjustment_amount: Decimal,
 ):
+    """Build the component rows stored under each employee payroll result."""
+
     return [
         {
             'component_type': 'base_wage',
@@ -603,7 +726,7 @@ def _component_payloads(
             'code': 'deduction_amount',
             'label': 'Deduction amount',
             'amount': -deduction_amount,
-            'quantity': attendance_summary.late_minutes_total + attendance_summary.absent_minutes_total + attendance_summary.approved_leave_minutes_total + attendance_summary.unapproved_leave_minutes_total,
+            'quantity': deductible_minutes_total,
             'display_order': 30,
         },
         {
@@ -611,7 +734,7 @@ def _component_payloads(
             'code': 'approved_overtime_pay',
             'label': 'Approved overtime pay',
             'amount': overtime_pay_amount,
-            'quantity': attendance_summary.approved_ot_minutes_total,
+            'quantity': payable_ot_minutes_total,
             'display_order': 40,
         },
         {
@@ -657,6 +780,8 @@ def generate_payroll_run(
     existing_run: PayrollRun | None = None,
     source_run: PayrollRun | None = None,
 ) -> PayrollRun:
+    """Generate or regenerate a payroll run for the requested month."""
+
     policy = source_run.policy_used if source_run is not None else get_active_payroll_policy(year, month, policy_id)
 
     if source_run is not None and (source_run.year != year or source_run.month != month):
@@ -714,6 +839,10 @@ def generate_payroll_run(
     payroll_run.employees.all().delete()
     PayrollMonthlySummary.objects.filter(payroll_run=payroll_run).delete()
     PayrollReportArtifact.objects.filter(payroll_run=payroll_run).delete()
+    AttendanceTimeBankEntry.objects.filter(
+        payroll_run=payroll_run,
+        entry_type=AttendanceTimeBankEntry.ENTRY_TYPE_OT_SETTLEMENT,
+    ).delete()
     if payroll_run.run_type == 'correction':
         PayrollCorrectionDelta.objects.filter(current_run=payroll_run).delete()
 
@@ -724,6 +853,7 @@ def generate_payroll_run(
     adjustment_totals = _build_adjustment_totals(year, month)
     settlement_totals = _build_settlement_totals(year, month)
     carry_forward_totals = _build_carry_forward_totals(year, month)
+    opening_time_bank_totals = _build_time_bank_opening_totals(year, month)
     previous_run_employee_map = _build_previous_run_employee_map(source_run or payroll_run.parent_run)
 
     run_entries = []
@@ -739,15 +869,33 @@ def generate_payroll_run(
         compensation = resolve_employee_compensation(employee, target_date, policy)
         daily_salary_rate = _divide_decimal(compensation.monthly_base_wage, compensation.policy.salary_days_per_month)
         hourly_wage = _divide_decimal(daily_salary_rate, compensation.policy.normal_work_hours_per_day)
+        approved_ot_offset_minutes_total = min(
+            attendance_summary.approved_ot_minutes_total,
+            attendance_summary.late_minutes_total
+            + attendance_summary.absent_minutes_total,
+        )
+        remaining_ot_minutes_total = attendance_summary.approved_ot_minutes_total - approved_ot_offset_minutes_total
+        opening_time_bank_minutes_total = opening_time_bank_totals.get(employee.id, 0)
+        settled_time_bank_minutes_total = min(
+            remaining_ot_minutes_total,
+            opening_time_bank_minutes_total + attendance_summary.time_bank_minutes_total,
+        )
+        payable_ot_minutes_total = remaining_ot_minutes_total - settled_time_bank_minutes_total
+        closing_time_bank_minutes_total = (
+            opening_time_bank_minutes_total
+            + attendance_summary.time_bank_minutes_total
+            - settled_time_bank_minutes_total
+        )
         deductible_minutes_total = (
             attendance_summary.late_minutes_total
             + attendance_summary.absent_minutes_total
+            - approved_ot_offset_minutes_total
             + attendance_summary.approved_leave_minutes_total
             + attendance_summary.unapproved_leave_minutes_total
         )
         deduction_amount = _money(_divide_decimal(_decimal(deductible_minutes_total), 60) * hourly_wage)
         overtime_pay_amount = _money(
-            _divide_decimal(_decimal(attendance_summary.approved_ot_minutes_total), 60)
+            _divide_decimal(_decimal(payable_ot_minutes_total), 60)
             * hourly_wage
             * _decimal(compensation.policy.overtime_multiplier)
         )
@@ -784,15 +932,22 @@ def generate_payroll_run(
             'deductible_minutes_total': deductible_minutes_total,
             'attendance_summary': {
                 'late_minutes_total': attendance_summary.late_minutes_total,
+                'early_departure_minutes_total': attendance_summary.early_departure_minutes_total,
                 'absent_minutes_total': attendance_summary.absent_minutes_total,
+                'time_bank_minutes_total': attendance_summary.time_bank_minutes_total,
                 'paid_rest_minutes_total': attendance_summary.paid_rest_minutes_total,
                 'approved_leave_minutes_total': attendance_summary.approved_leave_minutes_total,
                 'unapproved_leave_minutes_total': attendance_summary.unapproved_leave_minutes_total,
                 'approved_ot_minutes_total': attendance_summary.approved_ot_minutes_total,
+                'approved_ot_offset_minutes_total': approved_ot_offset_minutes_total,
+                'payable_ot_minutes_total': payable_ot_minutes_total,
                 'denied_ot_minutes_total': attendance_summary.denied_ot_minutes_total,
                 'full_attendance_eligible': attendance_summary.full_attendance_eligible,
                 'disciplinary_flags_json': attendance_summary.disciplinary_flags_json,
             },
+            'opening_time_bank_minutes_total': opening_time_bank_minutes_total,
+            'settled_time_bank_minutes_total': settled_time_bank_minutes_total,
+            'closing_time_bank_minutes_total': closing_time_bank_minutes_total,
             'attendance_bonus_amount': attendance_bonus_amount,
             'deduction_amount': deduction_amount,
             'overtime_pay_amount': overtime_pay_amount,
@@ -810,12 +965,20 @@ def generate_payroll_run(
             monthly_base_wage_amount=compensation.monthly_base_wage,
             attendance_bonus_amount=attendance_bonus_amount,
             late_minutes_total=attendance_summary.late_minutes_total,
+            early_departure_minutes_total=attendance_summary.early_departure_minutes_total,
             absent_minutes_total=attendance_summary.absent_minutes_total,
+            time_bank_minutes_total=attendance_summary.time_bank_minutes_total,
+            opening_time_bank_minutes_total=opening_time_bank_minutes_total,
+            settled_time_bank_minutes_total=settled_time_bank_minutes_total,
+            closing_time_bank_minutes_total=closing_time_bank_minutes_total,
             paid_rest_minutes_total=attendance_summary.paid_rest_minutes_total,
             approved_leave_minutes_total=attendance_summary.approved_leave_minutes_total,
             unapproved_leave_minutes_total=attendance_summary.unapproved_leave_minutes_total,
             approved_ot_minutes_total=attendance_summary.approved_ot_minutes_total,
+            approved_ot_offset_minutes_total=approved_ot_offset_minutes_total,
+            payable_ot_minutes_total=payable_ot_minutes_total,
             denied_ot_minutes_total=attendance_summary.denied_ot_minutes_total,
+            deductible_minutes_total=deductible_minutes_total,
             deduction_amount=deduction_amount,
             overtime_pay_amount=overtime_pay_amount,
             project_bonus_amount=project_bonus_amount,
@@ -832,7 +995,9 @@ def generate_payroll_run(
             attendance_summary,
             compensation.monthly_base_wage,
             attendance_bonus_amount,
+            deductible_minutes_total,
             deduction_amount,
+            payable_ot_minutes_total,
             overtime_pay_amount,
             manual_adjustments_amount,
             project_bonus_amount,
@@ -856,10 +1021,14 @@ def generate_payroll_run(
         'total_rounding_adjustment_amount': _money(sum(_decimal(entry.rounding_adjustment_amount) for entry in run_entries)),
         'total_gross_payable_amount': _money(sum(_decimal(entry.gross_payable_amount) for entry in run_entries)),
         'total_late_minutes': sum(entry.late_minutes_total for entry in run_entries),
+        'total_early_departure_minutes': sum(entry.early_departure_minutes_total for entry in run_entries),
         'total_absent_minutes': sum(entry.absent_minutes_total for entry in run_entries),
+        'total_time_bank_minutes': sum(entry.time_bank_minutes_total for entry in run_entries),
         'total_leave_minutes': sum(entry.approved_leave_minutes_total + entry.unapproved_leave_minutes_total for entry in run_entries),
         'total_paid_rest_minutes': sum(entry.paid_rest_minutes_total for entry in run_entries),
         'total_approved_ot_minutes': sum(entry.approved_ot_minutes_total for entry in run_entries),
+        'total_approved_ot_offset_minutes': sum(entry.approved_ot_offset_minutes_total for entry in run_entries),
+        'total_payable_ot_minutes': sum(entry.payable_ot_minutes_total for entry in run_entries),
         'trend_snapshot_json': {
             'year': year,
             'month': month,
@@ -876,6 +1045,8 @@ def generate_payroll_run(
 
 @transaction.atomic
 def build_correction_deltas(current_run: PayrollRun, previous_run: PayrollRun):
+    """Compute per-employee differences between a correction run and its source run."""
+
     PayrollCorrectionDelta.objects.filter(current_run=current_run).delete()
     EmployeePayrollCarryForwardBalance.objects.filter(origin_correction_delta__current_run=current_run).delete()
 
@@ -928,6 +1099,8 @@ def build_correction_deltas(current_run: PayrollRun, previous_run: PayrollRun):
 
 @transaction.atomic
 def approve_payroll_run(payroll_run: PayrollRun, acting_user=None) -> PayrollRun:
+    """Mark a payroll run as approved by the acting user."""
+
     payroll_run.status = 'approved'
     payroll_run.approved_by_user = acting_user if getattr(acting_user, 'is_authenticated', False) else None
     payroll_run.save(update_fields=['status', 'approved_by_user', 'updated_at'])
@@ -936,12 +1109,37 @@ def approve_payroll_run(payroll_run: PayrollRun, acting_user=None) -> PayrollRun
 
 @transaction.atomic
 def lock_payroll_run(payroll_run: PayrollRun, acting_user=None) -> PayrollRun:
+    """Finalize a payroll run and persist lock-time side effects."""
+
     payroll_run.status = 'locked'
     payroll_run.authorized_by_user = acting_user if getattr(acting_user, 'is_authenticated', False) else None
     payroll_run.locked_at = timezone.now()
     payroll_run.save(update_fields=['status', 'authorized_by_user', 'locked_at', 'updated_at'])
 
+    if payroll_run.run_type == 'normal':
+        AttendanceTimeBankEntry.objects.filter(
+            payroll_run=payroll_run,
+            entry_type=AttendanceTimeBankEntry.ENTRY_TYPE_OT_SETTLEMENT,
+        ).delete()
+        settlement_entry_date = date(
+            payroll_run.year,
+            payroll_run.month,
+            calendar.monthrange(payroll_run.year, payroll_run.month)[1],
+        )
+    else:
+        settlement_entry_date = None
+
     for payroll_run_employee in payroll_run.employees.all():
+        if settlement_entry_date is not None and payroll_run_employee.settled_time_bank_minutes_total > 0:
+            AttendanceTimeBankEntry.objects.create(
+                employee=payroll_run_employee.employee,
+                entry_type=AttendanceTimeBankEntry.ENTRY_TYPE_OT_SETTLEMENT,
+                entry_date=settlement_entry_date,
+                minutes_delta=payroll_run_employee.settled_time_bank_minutes_total,
+                payroll_run=payroll_run,
+                notes='Approved OT used to settle driver time-bank debt.',
+            )
+
         balances = EmployeePayrollCarryForwardBalance.objects.filter(
             employee=payroll_run_employee.employee,
             status__in=('open', 'partially_applied'),
@@ -957,6 +1155,8 @@ def lock_payroll_run(payroll_run: PayrollRun, acting_user=None) -> PayrollRun:
 
 
 def settle_project_bonus(project: ConstructionProject, settled_to_year: int, settled_to_month: int) -> dict:
+    """Distribute a construction project's labor pool across participating employees."""
+
     policy = get_active_payroll_policy(settled_to_year, settled_to_month)
     project.labor_pool_amount = _money(_decimal(project.revenue_amount) * _decimal(project.labor_pool_percent or policy.labor_pool_percent))
     project.save(update_fields=['labor_pool_amount', 'updated_at'])
@@ -1037,19 +1237,27 @@ def settle_project_bonus(project: ConstructionProject, settled_to_year: int, set
 
 
 def _artifact_relative_path(payroll_run: PayrollRun, report_type: str, format_name: str, employee: Employee | None = None) -> str:
+    """Build the relative media path for a generated payroll report artifact."""
+
     employee_token = f'-employee-{employee.id}' if employee is not None else ''
     return str(Path('payroll_reports') / f'run-{payroll_run.id}' / f'{report_type}{employee_token}.{format_name}')
 
 
 def _artifact_absolute_path(relative_path: str) -> Path:
+    """Resolve a relative artifact path into an absolute filesystem path."""
+
     return Path(settings.MEDIA_ROOT) / relative_path
 
 
 def _public_media_path(relative_path: str) -> str:
+    """Convert a stored artifact path into its public media URL path."""
+
     return f'{settings.MEDIA_URL}{relative_path}'.replace('//', '/')
 
 
 def build_employee_report_payload(payroll_run: PayrollRun, employee: Employee) -> dict:
+    """Assemble the structured payload for one employee payroll report."""
+
     payroll_entry = payroll_run.employees.select_related('employee').prefetch_related('components').get(employee=employee)
     summary = AttendanceMonthlySummary.objects.filter(employee=employee, year=payroll_run.year, month=payroll_run.month).first()
     leave_records = list(
@@ -1076,10 +1284,17 @@ def build_employee_report_payload(payroll_run: PayrollRun, employee: Employee) -
         'attendance_summary': _serialize_for_json(
             {
                 'late_minutes_total': summary.late_minutes_total if summary else 0,
+                'early_departure_minutes_total': summary.early_departure_minutes_total if summary else 0,
                 'absent_minutes_total': summary.absent_minutes_total if summary else 0,
+                'time_bank_minutes_total': summary.time_bank_minutes_total if summary else 0,
                 'approved_leave_minutes_total': summary.approved_leave_minutes_total if summary else 0,
                 'unapproved_leave_minutes_total': summary.unapproved_leave_minutes_total if summary else 0,
                 'approved_ot_minutes_total': summary.approved_ot_minutes_total if summary else 0,
+                'approved_ot_offset_minutes_total': payroll_entry.approved_ot_offset_minutes_total,
+                'payable_ot_minutes_total': payroll_entry.payable_ot_minutes_total,
+                'opening_time_bank_minutes_total': payroll_entry.opening_time_bank_minutes_total,
+                'settled_time_bank_minutes_total': payroll_entry.settled_time_bank_minutes_total,
+                'closing_time_bank_minutes_total': payroll_entry.closing_time_bank_minutes_total,
                 'denied_ot_minutes_total': summary.denied_ot_minutes_total if summary else 0,
                 'full_attendance_eligible': summary.full_attendance_eligible if summary else False,
             }
@@ -1128,6 +1343,8 @@ def build_employee_report_payload(payroll_run: PayrollRun, employee: Employee) -
 
 
 def build_workforce_report_payload(payroll_run: PayrollRun) -> dict:
+    """Assemble the management-facing payroll summary report payload."""
+
     monthly_summary = payroll_run.monthly_summary
     employee_rows = [
         {
@@ -1135,6 +1352,9 @@ def build_workforce_report_payload(payroll_run: PayrollRun) -> dict:
             'gross_payable_amount': payroll_run_employee.gross_payable_amount,
             'late_minutes_total': payroll_run_employee.late_minutes_total,
             'approved_ot_minutes_total': payroll_run_employee.approved_ot_minutes_total,
+            'approved_ot_offset_minutes_total': payroll_run_employee.approved_ot_offset_minutes_total,
+            'payable_ot_minutes_total': payroll_run_employee.payable_ot_minutes_total,
+            'closing_time_bank_minutes_total': payroll_run_employee.closing_time_bank_minutes_total,
             'project_bonus_amount': payroll_run_employee.project_bonus_amount,
         }
         for payroll_run_employee in payroll_run.employees.select_related('employee').all().order_by('-gross_payable_amount', 'employee__name')
@@ -1162,9 +1382,13 @@ def build_workforce_report_payload(payroll_run: PayrollRun) -> dict:
                 'total_rounding_adjustment_amount': monthly_summary.total_rounding_adjustment_amount,
                 'total_gross_payable_amount': monthly_summary.total_gross_payable_amount,
                 'total_late_minutes': monthly_summary.total_late_minutes,
+                'total_early_departure_minutes': monthly_summary.total_early_departure_minutes,
                 'total_absent_minutes': monthly_summary.total_absent_minutes,
+                'total_time_bank_minutes': monthly_summary.total_time_bank_minutes,
                 'total_leave_minutes': monthly_summary.total_leave_minutes,
                 'total_approved_ot_minutes': monthly_summary.total_approved_ot_minutes,
+                'total_approved_ot_offset_minutes': monthly_summary.total_approved_ot_offset_minutes,
+                'total_payable_ot_minutes': monthly_summary.total_payable_ot_minutes,
             }
         ),
         'employee_rows': _serialize_for_json(employee_rows),
@@ -1173,6 +1397,8 @@ def build_workforce_report_payload(payroll_run: PayrollRun) -> dict:
 
 
 def _report_lines_from_payload(payload: dict) -> list[str]:
+    """Flatten a structured report payload into printable text lines."""
+
     lines = [payload.get('report_title', 'Payroll report')]
     payroll_run = payload.get('payroll_run', {})
     if payroll_run:
@@ -1240,6 +1466,8 @@ def _report_lines_from_payload(payload: dict) -> list[str]:
 
 
 def _draw_report_image(lines: list[str], destination_path: Path):
+    """Render report lines into a simple image used for JPG and PDF output."""
+
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     font = ImageFont.load_default()
     wrapped_lines = []
@@ -1265,6 +1493,8 @@ def _draw_report_image(lines: list[str], destination_path: Path):
 
 
 def generate_report_artifacts(payroll_run: PayrollRun, report_type: str, employee: Employee | None = None) -> list[PayrollReportArtifact]:
+    """Generate and persist JPG/PDF payroll report artifacts."""
+
     if report_type == 'employee' and employee is None:
         raise ValueError('Employee report generation requires an employee.')
 
@@ -1306,6 +1536,8 @@ def generate_report_artifacts(payroll_run: PayrollRun, report_type: str, employe
 
 
 def serialize_report_artifact(artifact: PayrollReportArtifact) -> dict:
+    """Return a compact JSON-safe representation of a report artifact."""
+
     return {
         'id': artifact.id,
         'report_type': artifact.report_type,

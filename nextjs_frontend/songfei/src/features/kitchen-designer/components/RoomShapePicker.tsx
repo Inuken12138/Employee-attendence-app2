@@ -1,11 +1,18 @@
 'use client';
 
+/**
+ * Reusable kitchen designer UI component.
+ *
+ * These components support the planner flow with review widgets, subheaders, drawers, and guided controls.
+ */
+
 interface RoomShapePickerProps {
   open: boolean;
   onClose: () => void;
   onSelectRectangle: () => void;
 }
 
+/** Renders the room shape picker component used by this module. */
 export default function RoomShapePicker({ open, onClose, onSelectRectangle }: RoomShapePickerProps) {
   if (!open) {
     return null;

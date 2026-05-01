@@ -1,4 +1,10 @@
 'use client';
+
+/**
+ * Defines the Next.js page module for the /erp/inventory route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
 import { useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -15,6 +21,7 @@ interface InventoryItem {
   inventory_condition?: string;
 }
 
+/** Renders the inventory page. */
 export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -42,6 +49,7 @@ export default function InventoryPage() {
     fetchItems();
   }, [fetchItems]);
 
+  /** Returns the image src for the current input. */
   const getImageSrc = (image?: string | null) => {
     if (!image) {
       return null;
@@ -49,10 +57,12 @@ export default function InventoryPage() {
     return image.startsWith('http') ? image : `http://localhost:8000${image}`;
   };
 
+  /** Handles the change interaction for this component. */
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  /** Creates the item used by this module. */
   const createItem = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -92,6 +102,7 @@ export default function InventoryPage() {
     }
   };
 
+  /** Helper used by this module to manage delete item. */
   const deleteItem = async (id: number) => {
     if (!window.confirm('Delete this inventory item?')) {
       return;

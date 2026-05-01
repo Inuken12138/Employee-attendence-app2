@@ -1,7 +1,11 @@
+"""Switch employee identity from worker-id-only to worker-id plus employee name."""
+
 from django.db import migrations, models
 
 
 def normalize_employee_identity_fields(apps, schema_editor):
+	"""Normalize worker IDs and names before adding the composite uniqueness rule."""
+
 	Employee = apps.get_model('core', 'Employee')
 	for employee in Employee.objects.all().order_by('id'):
 		worker_id = (employee.worker_id or '').strip() or None

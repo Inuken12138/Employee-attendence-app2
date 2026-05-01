@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Reusable kitchen designer UI component.
+ *
+ * These components support the planner flow with review widgets, subheaders, drawers, and guided controls.
+ */
+
 import {
   PLANNER_CABINET_GROUPS,
   PLANNER_ROOT_CATEGORIES,
@@ -24,6 +30,7 @@ const toolbarItems = [
   { key: 'view-images', label: 'View images', icon: 'VI', interactive: false },
 ] as const;
 
+/** Renders the make it yours toolbar component used by this module. */
 export default function MakeItYoursToolbar({
   menuOpen,
   selectedPath,

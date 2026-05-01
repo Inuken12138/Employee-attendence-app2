@@ -1,3 +1,8 @@
+/**
+ * Pure helper functions for the kitchen designer.
+ *
+ * These utilities perform calculations, schema shaping, or taxonomy lookups without owning React rendering or network requests.
+ */
 export const PLANNER_ROOT_CATEGORIES = {
   cabinets: 'Cabinets',
   appliances: 'Appliances',
@@ -66,6 +71,7 @@ export type PlannerCabinetLeafKey = {
   [Key in PlannerCabinetGroupKey]: keyof (typeof PLANNER_CABINET_GROUPS)[Key]['leaves'];
 }[PlannerCabinetGroupKey];
 
+/** Returns the planner root label for the current input. */
 export function getPlannerRootLabel(rootCategory?: string | null) {
   if (!rootCategory) {
     return '';
@@ -74,6 +80,7 @@ export function getPlannerRootLabel(rootCategory?: string | null) {
   return PLANNER_ROOT_CATEGORIES[rootCategory as PlannerRootCategoryKey] ?? rootCategory;
 }
 
+/** Returns the planner group label for the current input. */
 export function getPlannerGroupLabel(groupCategory?: string | null) {
   if (!groupCategory) {
     return '';
@@ -82,6 +89,7 @@ export function getPlannerGroupLabel(groupCategory?: string | null) {
   return PLANNER_CABINET_GROUPS[groupCategory as PlannerCabinetGroupKey]?.label ?? groupCategory;
 }
 
+/** Returns the planner leaf label for the current input. */
 export function getPlannerLeafLabel(groupCategory?: string | null, leafCategory?: string | null) {
   if (!groupCategory || !leafCategory) {
     return '';
@@ -94,6 +102,7 @@ export function getPlannerLeafLabel(groupCategory?: string | null, leafCategory?
   );
 }
 
+/** Formats the planner breadcrumb into display-ready text. */
 export function formatPlannerBreadcrumb(path: {
   rootCategory?: string | null;
   groupCategory?: string | null;

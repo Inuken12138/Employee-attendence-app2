@@ -1,3 +1,5 @@
+"""Add image upload support for inventory items."""
+
 from django.db import migrations, models
 
 

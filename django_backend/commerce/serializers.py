@@ -1,9 +1,17 @@
+"""Serializer layer for the commerce cart and checkout APIs.
+
+Serializers translate database objects into JSON payloads the frontend can
+consume, and validate incoming cart mutations before views touch the models.
+"""
+
 from rest_framework import serializers
 
 from commerce.models import Cart, CartItem, Order, OrderItem
 
 
 class CartProductSummarySerializer(serializers.Serializer):
+    """Small product snapshot embedded inside cart and order responses."""
+
     id = serializers.IntegerField()
     product_id = serializers.CharField()
     name = serializers.CharField()
@@ -11,6 +19,8 @@ class CartProductSummarySerializer(serializers.Serializer):
     image_url = serializers.SerializerMethodField()
 
     def get_image_url(self, obj):
+        """Return an absolute image URL when request context is available."""
+
         if obj.image:
             request = self.context.get('request')
             if request:
@@ -20,6 +30,8 @@ class CartProductSummarySerializer(serializers.Serializer):
 
 
 class CartItemSerializer(serializers.ModelSerializer):
+    """Serialize a single cart line together with its product summary."""
+
     product = CartProductSummarySerializer(read_only=True)
 
     class Meta:
@@ -42,6 +54,8 @@ class CartItemSerializer(serializers.ModelSerializer):
 
 
 class CartSerializer(serializers.ModelSerializer):
+    """Serialize a cart with computed totals and nested line items."""
+
     items = serializers.SerializerMethodField()
     subtotal = serializers.SerializerMethodField()
     total_quantity = serializers.SerializerMethodField()
@@ -51,22 +65,32 @@ class CartSerializer(serializers.ModelSerializer):
         fields = ['id', 'status', 'items', 'subtotal', 'total_quantity', 'created_at', 'updated_at']
 
     def get_items(self, obj):
+        """Return cart items in stable creation order for predictable UI rendering."""
+
         items = obj.items.select_related('product', 'kitchen_bundle__project').order_by('created_at', 'id')
         return CartItemSerializer(items, many=True, context=self.context).data
 
     def get_subtotal(self, obj):
+        """Sum persisted line totals to produce the cart subtotal."""
+
         return round(sum(item.line_total for item in obj.items.all()), 2)
 
     def get_total_quantity(self, obj):
+        """Return the number of units currently inside the cart."""
+
         return sum(item.quantity for item in obj.items.all())
 
 
 class AddProductToCartSerializer(serializers.Serializer):
+    """Validate the minimal payload required to add a catalog product to cart."""
+
     product_id = serializers.IntegerField()
     quantity = serializers.IntegerField(required=False, min_value=1, default=1)
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
+    """Serialize an immutable order line for order-history responses."""
+
     product = CartProductSummarySerializer(read_only=True)
 
     class Meta:
@@ -86,6 +110,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
+    """Serialize an order together with the line items captured at checkout."""
+
     items = serializers.SerializerMethodField()
 
     class Meta:
@@ -94,5 +120,7 @@ class OrderSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_items(self, obj):
+        """Return ordered line items so order detail screens can render them."""
+
         items = obj.items.select_related('product').order_by('created_at', 'id')
         return OrderItemSerializer(items, many=True, context=self.context).data

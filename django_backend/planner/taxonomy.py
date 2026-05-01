@@ -1,3 +1,10 @@
+"""Hardcoded planner category tree used by the kitchen-designer ERP tools.
+
+The planner currently uses a small, code-defined taxonomy instead of a dynamic
+database-driven tree. These helpers let serializers and validators check that a
+product's category path is valid and complete before it is published.
+"""
+
 PLANNER_ROOT_CATEGORIES = {
     'cabinets': 'Cabinets',
     'appliances': 'Appliances',
@@ -62,14 +69,25 @@ PLANNER_CABINET_GROUPS = {
 
 
 def get_planner_root_choices():
+    """Expose root categories in Django ``choices`` format."""
+
     return [(value, label) for value, label in PLANNER_ROOT_CATEGORIES.items()]
 
 
 def get_planner_group_choices():
+    """Expose cabinet subgroup labels in Django ``choices`` format."""
+
     return [(value, definition['label']) for value, definition in PLANNER_CABINET_GROUPS.items()]
 
 
 def planner_path_is_valid(root_category: str, group_category: str, leaf_category: str) -> bool:
+    """Return whether a planner category path matches the hardcoded taxonomy.
+
+    This allows partial values while a profile is still being edited, but it
+    rejects impossible combinations like a wall-cabinet leaf under a non-cabinet
+    root.
+    """
+
     if not root_category and not group_category and not leaf_category:
         return True
 
@@ -86,6 +104,12 @@ def planner_path_is_valid(root_category: str, group_category: str, leaf_category
 
 
 def planner_path_is_complete(root_category: str, group_category: str, leaf_category: str) -> bool:
+    """Return whether the category path is valid and fully specified for publish.
+
+    Non-cabinet roots are complete with only the root value. Cabinet products
+    need root, group, and leaf values.
+    """
+
     if root_category == 'cabinets':
         return planner_path_is_valid(root_category, group_category, leaf_category) and bool(group_category and leaf_category)
 

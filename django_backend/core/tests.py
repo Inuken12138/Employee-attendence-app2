@@ -1,5 +1,12 @@
 # Tests
 # When running `python manage.py test`, the backend switches to an in-memory SQLite database so tests do not require PostgreSQL permissions.
+"""Regression tests for attendance parsing, employee identity, and payroll flows.
+
+This file holds a broad integration-style test suite for the ``core`` app. The
+tests are especially helpful during onboarding because they demonstrate the
+expected request payloads for attendance import, employee CRUD, and payroll
+adjacent APIs."""
+
 
 import calendar
 from datetime import date
@@ -13,17 +20,21 @@ from django.test import override_settings
 from openpyxl import Workbook
 from rest_framework.test import APITestCase
 
-from .models import AttendanceOvertimeDecision, AttendanceRecord, AttendanceRecordEmployee, AttendanceShift, ConstructionProject, ConstructionProjectAssignment, ConstructionProjectWorkLog, Employee, EmployeeCompensationProfile, EmployeeLeaveRecord, EmployeePayrollAdjustment, EmployeePayrollCarryForwardBalance, EmployeeRosterAssignment, PayrollPolicy, PayrollReportArtifact, PayrollRun, RosterTemplate
+from .models import AttendanceOvertimeDecision, AttendanceRecord, AttendanceRecordEmployee, AttendanceShift, AttendanceTimeBankEntry, ConstructionProject, ConstructionProjectAssignment, ConstructionProjectWorkLog, Employee, EmployeeAttendanceWorkRuleProfile, EmployeeCompensationProfile, EmployeeLeaveRecord, EmployeePayrollAdjustment, EmployeePayrollCarryForwardBalance, EmployeeRosterAssignment, PayrollPolicy, PayrollReportArtifact, PayrollRun, RosterTemplate
 from .views import _parse_attendance_sheet_records
 
 
 class AttendanceRecordsTests(APITestCase):
+	"""Exercise the attendance import, employee validation, and payroll endpoints."""
+
 	def setUp(self):
+		"""Create baseline employees used by parser and employee-CRUD tests."""
+
 		self.parser_employee = Employee.objects.create(
 			name='TOU',
 			base_salary=1000000,
 			worker_id='1',
-			is_active=True,
+			is_active=False,
 		)
 		self.employee = Employee.objects.create(
 			name='Test Employee',
@@ -33,10 +44,17 @@ class AttendanceRecordsTests(APITestCase):
 		)
 
 	def _attendance_file_path(self) -> Path:
+		"""Return the bundled sample attendance file used across parser tests."""
+
+		self.parser_employee.is_active = True
+		self.parser_employee.save(update_fields=['is_active'])
+
 		base_dir = Path(settings.BASE_DIR).parent
 		return base_dir / 'attendence' / '1_(12月)员工刷卡记录表.xls'
 
 	def _build_mon_sat_schedule(self):
+		"""Create a simple Monday-through-Saturday roster template payload."""
+
 		return [
 			{
 				'week_index': 1,
@@ -51,6 +69,8 @@ class AttendanceRecordsTests(APITestCase):
 		]
 
 	def _build_valid_attendance_upload(self, filename='attendance.xls'):
+		"""Load the real sample attendance export into an uploaded-file object."""
+
 		file_path = self._attendance_file_path()
 		with file_path.open('rb') as handle:
 			return SimpleUploadedFile(
@@ -60,11 +80,34 @@ class AttendanceRecordsTests(APITestCase):
 			)
 
 	def _build_invalid_attendance_upload(self, filename='wrong-sheet.xlsx'):
+		"""Create a workbook that intentionally does not match the parser format."""
+
 		workbook = Workbook()
 		sheet = workbook.active
 		sheet.title = 'Sheet1'
 		sheet['A1'] = 'This is not an attendance export'
 		sheet['B2'] = 'No worker headers here'
+
+		buffer = BytesIO()
+		workbook.save(buffer)
+		return SimpleUploadedFile(
+			filename,
+			buffer.getvalue(),
+			content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+		)
+
+	def _build_unmatched_attendance_upload(self, filename='unmatched-sheet.xlsx'):
+		"""Create a valid-looking sheet whose worker cannot be matched to an employee."""
+
+		workbook = Workbook()
+		sheet = workbook.active
+		sheet.title = 'Attendance'
+		sheet['A1'] = '工号'
+		sheet['B1'] = '999'
+		sheet['C1'] = '姓名'
+		sheet['D1'] = 'Ghost Worker'
+		sheet['A2'] = 1
+		sheet['A3'] = '08:00\n12:00\n13:00\n17:00'
 
 		buffer = BytesIO()
 		workbook.save(buffer)
@@ -175,12 +218,23 @@ class AttendanceRecordsTests(APITestCase):
 		self.assertIn('No valid attendance files were parsed.', response.data.get('error', ''))
 		self.assertEqual(len(response.data.get('warnings', [])), 1)
 
+	def test_parse_endpoint_warns_when_sheet_employees_do_not_match_directory(self):
+		response = self.client.post(
+			'/api/payroll/attendance-records/parse/',
+			{'file': self._build_unmatched_attendance_upload()},
+			format='multipart',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data['employees'], [])
+		self.assertEqual(len(response.data.get('warnings', [])), 1)
+		self.assertIn('Worker ID + Employee Name combination', response.data['warnings'][0])
+
 	def test_create_employee_requires_worker_id(self):
 		response = self.client.post(
 			'/api/employees/',
 			{
 				'name': 'No Worker ID',
-				'base_salary': 900000,
 				'is_active': True,
 			},
 			format='json',
@@ -194,7 +248,6 @@ class AttendanceRecordsTests(APITestCase):
 			'/api/employees/',
 			{
 				'name': '   ',
-				'base_salary': 900000,
 				'worker_id': 'E1002',
 				'is_active': True,
 			},
@@ -204,20 +257,21 @@ class AttendanceRecordsTests(APITestCase):
 		self.assertEqual(response.status_code, 400)
 		self.assertIn('name', response.data)
 
-	def test_create_employee_rejects_non_positive_base_salary(self):
+	def test_create_employee_allows_missing_salary_in_employee_record(self):
 		response = self.client.post(
 			'/api/employees/',
 			{
-				'name': 'No Salary',
-				'base_salary': 0,
+				'name': 'Comp Ledger Only',
 				'worker_id': 'E1002',
 				'is_active': True,
 			},
 			format='json',
 		)
 
-		self.assertEqual(response.status_code, 400)
-		self.assertIn('base_salary', response.data)
+		self.assertEqual(response.status_code, 201)
+		created_employee = Employee.objects.get(worker_id='E1002')
+		self.assertEqual(created_employee.base_salary, 0)
+		self.assertIsNone(response.data['base_salary'])
 
 	def test_update_employee_requires_worker_id(self):
 		response = self.client.patch(
@@ -236,7 +290,6 @@ class AttendanceRecordsTests(APITestCase):
 			'/api/employees/',
 			{
 				'name': 'Second Machine Worker',
-				'base_salary': 900000,
 				'worker_id': 'E1001',
 				'is_active': True,
 			},
@@ -251,7 +304,6 @@ class AttendanceRecordsTests(APITestCase):
 			'/api/employees/',
 			{
 				'name': 'Test Employee',
-				'base_salary': 900000,
 				'worker_id': 'E1001',
 				'is_active': True,
 			},
@@ -260,6 +312,25 @@ class AttendanceRecordsTests(APITestCase):
 
 		self.assertEqual(response.status_code, 400)
 		self.assertIn('worker_id', response.data)
+
+	def test_employee_list_uses_current_compensation_profile_salary(self):
+		EmployeeCompensationProfile.objects.create(
+			employee=self.employee,
+			monthly_salary='1234567.00',
+			effective_from='2020-01-01',
+			effective_to='2099-12-31',
+		)
+		EmployeeCompensationProfile.objects.create(
+			employee=self.employee,
+			monthly_salary='7654321.00',
+			effective_from='2100-01-01',
+		)
+
+		response = self.client.get('/api/employees/')
+
+		self.assertEqual(response.status_code, 200)
+		record = next(item for item in response.data if item['id'] == self.employee.id)
+		self.assertEqual(record['base_salary'], 1234567.0)
 
 	def test_save_uses_worker_id_and_name_as_attendance_identity(self):
 		other_employee = Employee.objects.create(
@@ -288,7 +359,7 @@ class AttendanceRecordsTests(APITestCase):
 			],
 		}
 
-		response = self.client.post('/api/payroll/attendance-records/save/', payload, format='json')
+		response = self.client.post('/api/payroll/attendance-records/save-draft/', payload, format='json')
 
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(len(response.data['employees']), 1)
@@ -323,7 +394,7 @@ class AttendanceRecordsTests(APITestCase):
 			],
 		}
 
-		response = self.client.post('/api/payroll/attendance-records/save/', payload, format='json')
+		response = self.client.post('/api/payroll/attendance-records/save-draft/', payload, format='json')
 
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.data['employees'], [])
@@ -355,7 +426,7 @@ class AttendanceRecordsTests(APITestCase):
 			],
 		}
 
-		response = self.client.post('/api/payroll/attendance-records/save/', payload, format='json')
+		response = self.client.post('/api/payroll/attendance-records/save-draft/', payload, format='json')
 
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.data['employees'], [])
@@ -426,7 +497,7 @@ class AttendanceRecordsTests(APITestCase):
 			],
 		}
 
-		save_response = self.client.post('/api/payroll/attendance-records/save/', payload, format='json')
+		save_response = self.client.post('/api/payroll/attendance-records/save-draft/', payload, format='json')
 
 		self.assertEqual(save_response.status_code, 200)
 		self.assertEqual(len(save_response.data['employees']), 1)
@@ -459,7 +530,7 @@ class AttendanceRecordsTests(APITestCase):
 			],
 		}
 
-		response = self.client.post('/api/payroll/attendance-records/save/', payload, format='json')
+		response = self.client.post('/api/payroll/attendance-records/save-draft/', payload, format='json')
 
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.data['employees'], [])
@@ -496,6 +567,76 @@ class AttendanceRecordsTests(APITestCase):
 		fetch_response = self.client.get('/api/payroll/attendance-records/drafts/?year=2025&month=11')
 		self.assertEqual(fetch_response.status_code, 200)
 		self.assertEqual(fetch_response.data.get('status'), 'draft')
+
+	def test_final_save_requires_every_active_employee_to_appear(self):
+		Employee.objects.create(
+			name='Second Active Employee',
+			base_salary=1100000,
+			worker_id='E2002',
+			is_active=True,
+		)
+
+		payload = {
+			'year': 2025,
+			'month': 11,
+			'employees': [
+				{
+					'worker_id': 'E1001',
+					'employee_name': 'Test Employee',
+					'department': 'HR',
+					'days': {
+						'1': {
+							'raw_logs': ['08:00', '12:00', '13:00', '17:00'],
+							'morning': {'in': '08:00', 'out': '12:00', 'status': 'present'},
+							'afternoon': {'in': '13:00', 'out': '17:00', 'status': 'present'},
+						}
+					},
+				}
+			],
+		}
+
+		response = self.client.post('/api/payroll/attendance-records/save/', payload, format='json')
+
+		self.assertEqual(response.status_code, 400)
+		self.assertIn('Final attendance must include every active employee', str(response.data.get('error')))
+		self.assertIn('E2002', str(response.data.get('error')))
+
+	def test_reopen_final_attendance_converts_month_back_to_draft(self):
+		self.parser_employee.is_active = False
+		self.parser_employee.save(update_fields=['is_active'])
+
+		payload = {
+			'year': 2025,
+			'month': 11,
+			'employees': [
+				{
+					'worker_id': 'E1001',
+					'employee_name': 'Test Employee',
+					'department': 'HR',
+					'days': {
+						'1': {
+							'raw_logs': ['08:00', '12:00', '13:00', '17:00'],
+							'morning': {'in': '08:00', 'out': '12:00', 'status': 'present'},
+							'afternoon': {'in': '13:00', 'out': '17:00', 'status': 'present'},
+						}
+					},
+				}
+			],
+		}
+
+		save_response = self.client.post('/api/payroll/attendance-records/save/', payload, format='json')
+		self.assertEqual(save_response.status_code, 200)
+
+		reopen_response = self.client.post(
+			'/api/payroll/attendance-records/reopen/',
+			{'year': 2025, 'month': 11},
+			format='json',
+		)
+
+		self.assertEqual(reopen_response.status_code, 200)
+		self.assertEqual(reopen_response.data.get('status'), 'draft')
+		self.assertFalse(AttendanceRecord.objects.filter(year=2025, month=11, status='final').exists())
+		self.assertTrue(AttendanceRecord.objects.filter(year=2025, month=11, status='draft').exists())
 
 	def test_history_lists_saved_periods(self):
 		draft_payload = {
@@ -838,6 +979,62 @@ class AttendanceRecordsTests(APITestCase):
 		self.assertEqual(len(records), 1)
 		self.assertEqual(records[0]['decision_reason'], 'Unauthorized overtime')
 
+	def test_save_draft_persists_overtime_decisions_from_payload(self):
+		template = RosterTemplate.objects.create(
+			name='Draft OT Template',
+			description='Template with overtime-sensitive end times',
+			cycle_length_weeks=1,
+			schedule=self._build_mon_sat_schedule(),
+		)
+		EmployeeRosterAssignment.objects.create(
+			employee=self.employee,
+			template=template,
+			effective_start_date='2025-09-01',
+		)
+
+		payload = {
+			'year': 2025,
+			'month': 9,
+			'employees': [
+				{
+					'worker_id': 'E1001',
+					'employee_name': 'Test Employee',
+					'department': 'HR',
+					'days': {
+						'1': {
+							'raw_logs': ['08:00', '12:00', '13:00', '18:15'],
+							'morning': {'in': '08:00', 'out': '12:00', 'status': 'present'},
+							'afternoon': {'in': '13:00', 'out': '18:15', 'status': 'present'},
+						}
+					},
+				}
+			],
+			'overtime_decisions': [
+				{
+					'employee': self.employee.id,
+					'attendance_date': '2025-09-01',
+					'attendance_shift': 'afternoon',
+					'roster_start_time': '13:00',
+					'roster_end_time': '17:30',
+					'actual_checkout_time': '18:15',
+					'status': 'denied',
+					'decision_reason': 'Stayed back for handover only.',
+				},
+			],
+		}
+
+		response = self.client.post('/api/payroll/attendance-records/save-draft/', payload, format='json')
+
+		self.assertEqual(response.status_code, 200)
+		decision = AttendanceOvertimeDecision.objects.get(
+			employee=self.employee,
+			attendance_date='2025-09-01',
+			attendance_shift='afternoon',
+		)
+		self.assertEqual(decision.status, 'denied')
+		self.assertEqual(decision.denied_ot_minutes, 45)
+		self.assertEqual(decision.decision_reason, 'Stayed back for handover only.')
+
 	def test_final_save_requires_resolved_overtime_decision(self):
 		template = RosterTemplate.objects.create(
 			name='OT Template',
@@ -924,12 +1121,57 @@ class AttendanceRecordsTests(APITestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.data['employees'][0]['days']['1']['afternoon']['status'], 'present')
 
+	def test_final_save_ignores_overtime_below_policy_grace(self):
+		template = RosterTemplate.objects.create(
+			name='Grace OT Template',
+			description='Template with short overtime overrun',
+			cycle_length_weeks=1,
+			schedule=self._build_mon_sat_schedule(),
+		)
+		EmployeeRosterAssignment.objects.create(
+			employee=self.employee,
+			template=template,
+			effective_start_date='2025-09-01',
+		)
+		PayrollPolicy.objects.create(
+			policy_code='PAYROLL',
+			name='Grace Policy',
+			version_number=1,
+			effective_from='2025-09-01',
+			overtime_grace_minutes=10,
+			status='active',
+			is_active=True,
+		)
+
+		payload = {
+			'year': 2025,
+			'month': 9,
+			'employees': [
+				{
+					'worker_id': 'E1001',
+					'employee_name': 'Test Employee',
+					'department': 'HR',
+					'days': {
+						'1': {
+							'raw_logs': ['08:00', '12:00', '13:00', '17:38'],
+							'morning': {'in': '08:00', 'out': '12:00', 'status': 'present'},
+							'afternoon': {'in': '13:00', 'out': '17:38', 'status': 'present'},
+						}
+					},
+				}
+			],
+		}
+
+		response = self.client.post('/api/payroll/attendance-records/save/', payload, format='json')
+
+		self.assertEqual(response.status_code, 200)
+
 
 class PayrollPlatformTests(APITestCase):
 	def setUp(self):
 		self.employee = Employee.objects.create(
 			name='Payroll Employee',
-			base_salary=800000,
+			base_salary=0,
 			worker_id='PAY-1',
 			is_active=True,
 		)
@@ -997,6 +1239,33 @@ class PayrollPlatformTests(APITestCase):
 					afternoon_status='off',
 				)
 
+	def _get_shift(self, year, month, day):
+		return AttendanceShift.objects.get(
+			record_employee__record__year=year,
+			record_employee__record__month=month,
+			record_employee__record__status='final',
+			record_employee__employee=self.employee,
+			day=day,
+		)
+
+	def _set_afternoon_checkout(self, year, month, day, checkout_time):
+		shift = self._get_shift(year, month, day)
+		shift.afternoon_out = checkout_time
+		shift.save(update_fields=['afternoon_out'])
+
+	def _create_approved_overtime(self, year, month, day, checkout_time, minutes):
+		AttendanceOvertimeDecision.objects.create(
+			employee=self.employee,
+			attendance_date=date(year, month, day),
+			attendance_shift='afternoon',
+			roster_start_time='13:00',
+			roster_end_time='17:00',
+			actual_checkout_time=checkout_time,
+			potential_ot_minutes=minutes,
+			approved_ot_minutes=minutes,
+			status='approved',
+		)
+
 	def test_generate_normal_payroll_run_uses_compensation_profile(self):
 		response = self.client.post(
 			'/api/payroll/runs/',
@@ -1015,6 +1284,223 @@ class PayrollPlatformTests(APITestCase):
 		self.assertEqual(response.data['employees'][0]['attendance_bonus_amount'], '25000.00')
 		self.assertEqual(response.data['employees'][0]['gross_payable_amount'], '1175000.00')
 		self.assertEqual(response.data['monthly_summary']['total_gross_payable_amount'], '1175000.00')
+
+	def test_generate_normal_payroll_run_requires_active_compensation_profile(self):
+		self.compensation_profile.delete()
+
+		response = self.client.post(
+			'/api/payroll/runs/',
+			{
+				'year': 2025,
+				'month': 9,
+				'run_type': 'normal',
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertIn('No compensation profile is active', response.data['error'])
+
+	def test_compensation_profiles_reject_overlap_for_same_employee(self):
+		response = self.client.post(
+			'/api/payroll/compensation-profiles/',
+			{
+				'employee': self.employee.id,
+				'monthly_salary': '1200000.00',
+				'effective_from': '2025-09-15',
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertIn('effective_from', response.data['error'])
+
+	def test_attendance_work_rule_profiles_reject_overlap_for_same_employee(self):
+		create_response = self.client.post(
+			'/api/payroll/attendance-work-rule-profiles/',
+			{
+				'employee': self.employee.id,
+				'work_rule': 'driver_time_bank',
+				'effective_from': '2025-09-01',
+			},
+			format='json',
+		)
+
+		self.assertEqual(create_response.status_code, 201)
+
+		overlap_response = self.client.post(
+			'/api/payroll/attendance-work-rule-profiles/',
+			{
+				'employee': self.employee.id,
+				'work_rule': 'standard',
+				'effective_from': '2025-09-15',
+			},
+			format='json',
+		)
+
+		self.assertEqual(overlap_response.status_code, 400)
+		self.assertIn('effective_from', overlap_response.data['error'])
+
+	def test_standard_early_departure_becomes_absence_and_offsets_approved_ot(self):
+		self._set_afternoon_checkout(2025, 9, 1, '16:00')
+		self._create_approved_overtime(2025, 9, 2, '18:00', 60)
+
+		response = self.client.post(
+			'/api/payroll/runs/',
+			{
+				'year': 2025,
+				'month': 9,
+				'run_type': 'normal',
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 201)
+		record = response.data['employees'][0]
+		self.assertEqual(record['early_departure_minutes_total'], 60)
+		self.assertEqual(record['absent_minutes_total'], 60)
+		self.assertEqual(record['time_bank_minutes_total'], 0)
+		self.assertEqual(record['approved_ot_minutes_total'], 60)
+		self.assertEqual(record['approved_ot_offset_minutes_total'], 60)
+		self.assertEqual(record['payable_ot_minutes_total'], 0)
+		self.assertEqual(record['deductible_minutes_total'], 0)
+		self.assertEqual(record['attendance_bonus_amount'], '0.00')
+		self.assertEqual(record['overtime_pay_amount'], '0.00')
+		self.assertEqual(record['deduction_amount'], '0.00')
+
+	def test_driver_early_departure_uses_time_bank_before_overtime_pay(self):
+		EmployeeAttendanceWorkRuleProfile.objects.create(
+			employee=self.employee,
+			work_rule='driver_time_bank',
+			effective_from='2025-09-01',
+		)
+		self._set_afternoon_checkout(2025, 9, 1, '16:00')
+		self._create_approved_overtime(2025, 9, 2, '18:00', 60)
+
+		response = self.client.post(
+			'/api/payroll/runs/',
+			{
+				'year': 2025,
+				'month': 9,
+				'run_type': 'normal',
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 201)
+		run_id = response.data['id']
+		record = response.data['employees'][0]
+		self.assertEqual(record['early_departure_minutes_total'], 60)
+		self.assertEqual(record['absent_minutes_total'], 0)
+		self.assertEqual(record['time_bank_minutes_total'], 60)
+		self.assertEqual(record['opening_time_bank_minutes_total'], 0)
+		self.assertEqual(record['settled_time_bank_minutes_total'], 60)
+		self.assertEqual(record['closing_time_bank_minutes_total'], 0)
+		self.assertEqual(record['approved_ot_offset_minutes_total'], 0)
+		self.assertEqual(record['payable_ot_minutes_total'], 0)
+		self.assertEqual(record['deductible_minutes_total'], 0)
+
+		lock_response = self.client.post(f'/api/payroll/runs/{run_id}/lock/', {}, format='json')
+		self.assertEqual(lock_response.status_code, 200)
+
+		entries = list(AttendanceTimeBankEntry.objects.filter(employee=self.employee).order_by('entry_date', 'id'))
+		self.assertEqual([entry.minutes_delta for entry in entries], [-60, 60])
+
+	def test_driver_time_bank_balance_resets_at_the_start_of_next_month(self):
+		EmployeeAttendanceWorkRuleProfile.objects.create(
+			employee=self.employee,
+			work_rule='driver_time_bank',
+			effective_from='2025-09-01',
+		)
+		self._set_afternoon_checkout(2025, 9, 1, '16:00')
+
+		september_response = self.client.post(
+			'/api/payroll/runs/',
+			{
+				'year': 2025,
+				'month': 9,
+				'run_type': 'normal',
+			},
+			format='json',
+		)
+		self.assertEqual(september_response.status_code, 201)
+		self.assertEqual(september_response.data['employees'][0]['closing_time_bank_minutes_total'], 60)
+
+		september_run = september_response.data['id']
+		lock_response = self.client.post(f'/api/payroll/runs/{september_run}/lock/', {}, format='json')
+		self.assertEqual(lock_response.status_code, 200)
+
+		self._create_finalized_attendance_month(2025, 10)
+		self._create_approved_overtime(2025, 10, 1, '18:00', 60)
+
+		october_response = self.client.post(
+			'/api/payroll/runs/',
+			{
+				'year': 2025,
+				'month': 10,
+				'run_type': 'normal',
+			},
+			format='json',
+		)
+
+		self.assertEqual(october_response.status_code, 201)
+		record = october_response.data['employees'][0]
+		self.assertEqual(record['opening_time_bank_minutes_total'], 0)
+		self.assertEqual(record['time_bank_minutes_total'], 0)
+		self.assertEqual(record['settled_time_bank_minutes_total'], 0)
+		self.assertEqual(record['closing_time_bank_minutes_total'], 0)
+		self.assertEqual(record['approved_ot_offset_minutes_total'], 0)
+		self.assertEqual(record['payable_ot_minutes_total'], 60)
+
+	def test_compensation_profiles_allow_contiguous_successor(self):
+		close_response = self.client.patch(
+			f'/api/payroll/compensation-profiles/{self.compensation_profile.id}/',
+			{
+				'effective_to': '2025-09-30',
+			},
+			format='json',
+		)
+
+		self.assertEqual(close_response.status_code, 200)
+
+		create_response = self.client.post(
+			'/api/payroll/compensation-profiles/',
+			{
+				'employee': self.employee.id,
+				'monthly_salary': '1300000.00',
+				'payroll_policy': self.policy.id,
+				'effective_from': '2025-10-01',
+			},
+			format='json',
+		)
+
+		self.assertEqual(create_response.status_code, 201)
+		self.assertEqual(create_response.data['effective_from'], '2025-10-01')
+
+	def test_compensation_profiles_reject_gap_before_successor(self):
+		close_response = self.client.patch(
+			f'/api/payroll/compensation-profiles/{self.compensation_profile.id}/',
+			{
+				'effective_to': '2025-09-30',
+			},
+			format='json',
+		)
+
+		self.assertEqual(close_response.status_code, 200)
+
+		create_response = self.client.post(
+			'/api/payroll/compensation-profiles/',
+			{
+				'employee': self.employee.id,
+				'monthly_salary': '1300000.00',
+				'payroll_policy': self.policy.id,
+				'effective_from': '2025-10-02',
+			},
+			format='json',
+		)
+
+		self.assertEqual(create_response.status_code, 400)
+		self.assertIn('effective_from', create_response.data['error'])
 
 	def test_project_settlement_creates_bonus_distribution(self):
 		project = ConstructionProject.objects.create(
@@ -1048,6 +1534,43 @@ class PayrollPlatformTests(APITestCase):
 		self.assertEqual(project.status, 'settled')
 		self.assertEqual(len(response.data['settlements']), 1)
 		self.assertGreater(float(response.data['settlements'][0]['bonus_share_amount']), 0)
+
+	def test_payroll_adjustments_normalize_signed_amounts_and_can_be_deleted(self):
+		create_response = self.client.post(
+			'/api/payroll/adjustments/',
+			{
+				'employee': self.employee.id,
+				'year': 2025,
+				'month': 9,
+				'adjustment_type': 'advance',
+				'amount': '50000.00',
+				'approval_status': 'approved',
+			},
+			format='json',
+		)
+
+		self.assertEqual(create_response.status_code, 201)
+		self.assertEqual(create_response.data['amount'], '-50000.00')
+
+		adjustment_id = create_response.data['id']
+		stored_adjustment = EmployeePayrollAdjustment.objects.get(pk=adjustment_id)
+		self.assertEqual(str(stored_adjustment.amount), '-50000.00')
+
+		update_response = self.client.patch(
+			f'/api/payroll/adjustments/{adjustment_id}/',
+			{
+				'adjustment_type': 'manual_bonus',
+				'amount': '-25000.00',
+			},
+			format='json',
+		)
+
+		self.assertEqual(update_response.status_code, 200)
+		self.assertEqual(update_response.data['amount'], '25000.00')
+
+		delete_response = self.client.delete(f'/api/payroll/adjustments/{adjustment_id}/')
+		self.assertEqual(delete_response.status_code, 204)
+		self.assertFalse(EmployeePayrollAdjustment.objects.filter(pk=adjustment_id).exists())
 
 	def test_correction_run_creates_carry_forward_balance_for_overpayment(self):
 		normal_run_response = self.client.post(

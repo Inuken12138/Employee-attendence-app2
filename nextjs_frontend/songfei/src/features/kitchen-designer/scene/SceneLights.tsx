@@ -1,3 +1,8 @@
+/**
+ * 3D scene component for the kitchen designer.
+ *
+ * These files turn planner state into visual geometry, camera behavior, and lighting inside the design canvas.
+ */
 export default function SceneLights() {
   return (
     <>

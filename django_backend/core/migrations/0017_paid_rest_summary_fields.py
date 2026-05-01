@@ -1,3 +1,5 @@
+"""Add paid-rest totals to attendance and payroll summary models."""
+
 from django.db import migrations, models
 
 

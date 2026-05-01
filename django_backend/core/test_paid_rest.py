@@ -1,3 +1,10 @@
+"""Focused tests for department-driven paid rest.
+
+These tests document the newer shop-floor paid-rest workflow: departments can
+enable the feature, balances are rebuilt monthly, approvals respect leave and
+coverage rules, and approved paid rest overlays into attendance drafts.
+"""
+
 import calendar
 from datetime import date
 
@@ -17,7 +24,11 @@ from .models import (
 
 
 class DepartmentAndPaidRestTests(APITestCase):
+    """Exercise department CRUD and paid-rest approval edge cases."""
+
     def setUp(self):
+        """Create a department, policy, roster, and three shop-floor employees."""
+
         self.department = Department.objects.create(
             name='Shop Floor',
             code='SHOP',
@@ -70,6 +81,8 @@ class DepartmentAndPaidRestTests(APITestCase):
         self.tertiary_employee = self.employees[2]
 
     def _build_all_week_schedule(self):
+        """Return a seven-day working roster used as the shop-floor base schedule."""
+
         return [
             {
                 'week_index': 1,
@@ -91,6 +104,8 @@ class DepartmentAndPaidRestTests(APITestCase):
         linked_attendance_shift='',
         submission_status='draft',
     ):
+        """Create a paid-rest request through the public API used in production."""
+
         return self.client.post(
             '/api/payroll/paid-rest/',
             {
@@ -105,6 +120,8 @@ class DepartmentAndPaidRestTests(APITestCase):
         )
 
     def _create_finalized_month(self, year, month, paid_rest_shifts=None):
+        """Create a finalized attendance record for balance and overlay scenarios."""
+
         paid_rest_shifts = paid_rest_shifts or set()
         record = AttendanceRecord.objects.create(year=year, month=month, status='final')
         last_day = calendar.monthrange(year, month)[1]

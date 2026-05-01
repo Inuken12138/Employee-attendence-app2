@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /products route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
@@ -21,6 +27,7 @@ interface Product {
   ratingCount?: number | null;
 }
 
+/** Renders the products search content component used by this module. */
 function ProductsSearchContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get('query') || '';
@@ -153,6 +160,7 @@ function ProductsSearchContent() {
   );
 }
 
+/** Renders the products search page. */
 export default function ProductsSearchPage() {
   return (
     <Suspense fallback={<div className="muted" style={{ padding: '2rem' }}>Loading products...</div>}>

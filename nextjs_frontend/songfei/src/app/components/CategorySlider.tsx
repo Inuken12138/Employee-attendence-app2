@@ -1,5 +1,18 @@
 'use client';
 
+/**
+ * Shared application UI component.
+ *
+ * This file contains reusable presentation logic that is consumed by multiple storefront or ERP routes.
+ */
+
+/**
+ * Fetches and displays the root product categories as a horizontal slider.
+ *
+ * The home page uses this component to turn backend category data into a visual
+ * browse-first entry point for shoppers.
+ */
+
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -12,6 +25,7 @@ interface Category {
   image_url: string | null;
 }
 
+/** Loads category data and renders category cards that link into the catalog. */
 export default function CategorySlider() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);

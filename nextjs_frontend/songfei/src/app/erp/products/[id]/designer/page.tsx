@@ -1,16 +1,31 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /erp/products/[id]/designer route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import useErrorPopup from '@/app/hooks/useErrorPopup';
 import {
+  buildAssemblyCompositeDraft,
+  buildLeafCompositeDraft,
+  buildSinkBaseCompositeDraft,
+  getCompositeNodeKind,
+  setCompositeNodeKind,
+  type PlannerCompositeDraft,
+} from '@/features/kitchen-designer/lib/compositeSchema';
+import {
   PLANNER_CABINET_GROUPS,
   PLANNER_ROOT_CATEGORIES,
   formatPlannerBreadcrumb,
   type PlannerCabinetGroupKey,
 } from '@/features/kitchen-designer/lib/plannerTaxonomy';
+import type { PlannerCompositeNodeKind, PlannerCompositeSchema } from '@/features/kitchen-designer/types/planner';
 import { apiJson } from '@/lib/api';
 
 interface ProductionAsset {
@@ -65,6 +80,7 @@ interface DesignerProfile {
   interaction_schema: Record<string, unknown>;
   constraint_schema: Record<string, unknown>;
   compatibility_schema: Record<string, unknown>;
+  composite_schema: PlannerCompositeSchema;
   has_production_assets: boolean;
   production_asset_notes: string;
   validation_notes: string;
@@ -94,6 +110,7 @@ interface DesignerFormState {
   interaction_schema: string;
   constraint_schema: string;
   compatibility_schema: string;
+  composite_node_kind: PlannerCompositeNodeKind;
   production_asset_notes: string;
   validation_notes: string;
 }
@@ -120,9 +137,15 @@ const defaultForm: DesignerFormState = {
   interaction_schema: '{}',
   constraint_schema: '{}',
   compatibility_schema: '{}',
+  composite_node_kind: 'leaf',
   production_asset_notes: '',
   validation_notes: '',
 };
+
+/** Formats the json field into display-ready text. */
+function formatJsonField(value: Record<string, unknown>) {
+  return JSON.stringify(value, null, 2);
+}
 
 const productionAssetTypes = [
   { value: 'gcode', label: 'G-code' },
@@ -134,10 +157,12 @@ const productionAssetTypes = [
   { value: 'other', label: 'Other' },
 ];
 
+/** Formats the validation issues into display-ready text. */
 function formatValidationIssues(items: string[]) {
   return items.map((item) => `- ${item}`).join('\n');
 }
 
+/** Formats the validation popup message into display-ready text. */
 function formatValidationPopupMessage(validation: LatestValidation) {
   const sections: string[] = [];
 
@@ -152,6 +177,7 @@ function formatValidationPopupMessage(validation: LatestValidation) {
   return sections.join('\n\n') || 'The validation run did not return any issues.';
 }
 
+/** Renders the product designer settings page. */
 export default function ProductDesignerSettingsPage() {
   const params = useParams();
   const productId = useMemo(() => {
@@ -226,6 +252,7 @@ export default function ProductDesignerSettingsPage() {
         interaction_schema: JSON.stringify(data.interaction_schema || {}, null, 2),
         constraint_schema: JSON.stringify(data.constraint_schema || {}, null, 2),
         compatibility_schema: JSON.stringify(data.compatibility_schema || {}, null, 2),
+        composite_node_kind: getCompositeNodeKind(data.interaction_schema || {}),
         production_asset_notes: data.production_asset_notes || '',
         validation_notes: data.validation_notes || '',
       });
@@ -242,10 +269,12 @@ export default function ProductDesignerSettingsPage() {
     void loadProfile();
   }, [loadProfile]);
 
+  /** Updates the form and returns the next value. */
   const updateForm = <K extends keyof DesignerFormState>(key: K, value: DesignerFormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
+  /** Parses the json field into a value the module can use. */
   const parseJsonField = (value: string, fieldLabel: string) => {
     try {
       return JSON.parse(value || '{}') as Record<string, unknown>;
@@ -254,6 +283,19 @@ export default function ProductDesignerSettingsPage() {
     }
   };
 
+  /** Helper used by this module to manage apply composite draft. */
+  const applyCompositeDraft = (draft: PlannerCompositeDraft, nextKind: PlannerCompositeNodeKind, message: string) => {
+    setForm((current) => ({
+      ...current,
+      interaction_schema: formatJsonField(draft.interaction_schema),
+      constraint_schema: formatJsonField(draft.constraint_schema),
+      compatibility_schema: formatJsonField(draft.compatibility_schema),
+      composite_node_kind: nextKind,
+    }));
+    setStatusMessage(message);
+  };
+
+  /** Helper used by this module to manage save profile. */
   const saveProfile = async ({ showSavedMessage = true }: { showSavedMessage?: boolean } = {}) => {
     if (!productId) {
       return null;
@@ -267,6 +309,13 @@ export default function ProductDesignerSettingsPage() {
 
     try {
       const formData = new FormData();
+      const parsedInteractionSchema = setCompositeNodeKind(
+        parseJsonField(form.interaction_schema, 'Interaction schema'),
+        form.composite_node_kind,
+      );
+      const parsedConstraintSchema = parseJsonField(form.constraint_schema, 'Constraint schema');
+      const parsedCompatibilitySchema = parseJsonField(form.compatibility_schema, 'Compatibility schema');
+
       formData.append('is_enabled', String(form.is_enabled));
       formData.append('planner_role', form.planner_role);
       formData.append('planner_root_category', form.planner_root_category);
@@ -283,13 +332,10 @@ export default function ProductDesignerSettingsPage() {
       formData.append('production_asset_notes', form.production_asset_notes);
       formData.append('validation_notes', form.validation_notes);
       formData.append('bounding_box_mm', JSON.stringify(parseJsonField(form.bounding_box_mm, 'Bounding box')));
-      formData.append('interaction_schema', JSON.stringify(parseJsonField(form.interaction_schema, 'Interaction schema')));
-      formData.append('constraint_schema', JSON.stringify(parseJsonField(form.constraint_schema, 'Constraint schema')));
-      formData.append('compatibility_schema', JSON.stringify(parseJsonField(form.compatibility_schema, 'Compatibility schema')));
+      formData.append('interaction_schema', JSON.stringify(parsedInteractionSchema));
+      formData.append('constraint_schema', JSON.stringify(parsedConstraintSchema));
+      formData.append('compatibility_schema', JSON.stringify(parsedCompatibilitySchema));
 
-      if (form.width_mm) formData.append('width_mm', form.width_mm);
-      if (form.depth_mm) formData.append('depth_mm', form.depth_mm);
-      if (form.height_mm) formData.append('height_mm', form.height_mm);
       if (form.override_price) formData.append('override_price', form.override_price);
       if (glbFile) formData.append('glb_file', glbFile);
 
@@ -313,10 +359,12 @@ export default function ProductDesignerSettingsPage() {
     }
   };
 
+  /** Handles the save interaction for this component. */
   const handleSave = async () => {
     await saveProfile();
   };
 
+  /** Handles the validate interaction for this component. */
   const handleValidate = async () => {
     if (!productId) {
       return;
@@ -353,6 +401,7 @@ export default function ProductDesignerSettingsPage() {
     }
   };
 
+  /** Handles the catalog action interaction for this component. */
   const handleCatalogAction = async (action: 'stage' | 'publish' | 'unpublish') => {
     if (!productId) {
       return;
@@ -374,6 +423,7 @@ export default function ProductDesignerSettingsPage() {
     }
   };
 
+  /** Handles the upload production asset interaction for this component. */
   const handleUploadProductionAsset = async () => {
     if (!productId || !assetFile || !assetForm.label.trim()) {
       showErrorPopup('Add a label and file before uploading a production asset.');
@@ -419,6 +469,7 @@ export default function ProductDesignerSettingsPage() {
     }
   };
 
+  /** Handles the delete asset interaction for this component. */
   const handleDeleteAsset = async (assetId: number) => {
     if (!window.confirm('Delete this production asset?')) {
       return;
@@ -554,18 +605,12 @@ export default function ProductDesignerSettingsPage() {
               <option value="formula">Formula</option>
             </select>
           </label>
-          <label className="form-field">
-            <span>Width (mm)</span>
-            <input className="input" value={form.width_mm} onChange={(event) => updateForm('width_mm', event.target.value)} />
-          </label>
-          <label className="form-field">
-            <span>Depth (mm)</span>
-            <input className="input" value={form.depth_mm} onChange={(event) => updateForm('depth_mm', event.target.value)} />
-          </label>
-          <label className="form-field">
-            <span>Height (mm)</span>
-            <input className="input" value={form.height_mm} onChange={(event) => updateForm('height_mm', event.target.value)} />
-          </label>
+          <div className="form-field" style={{ justifyContent: 'center' }}>
+            <span>GLB size source</span>
+            <div className="muted">
+              Imported planner models now keep their native meter scale automatically. Manual width, depth, and height entry is no longer used.
+            </div>
+          </div>
           <label className="form-field">
             <span>Default rotation (deg)</span>
             <input className="input" value={form.default_rotation_deg} onChange={(event) => updateForm('default_rotation_deg', event.target.value)} />
@@ -612,13 +657,37 @@ export default function ProductDesignerSettingsPage() {
         <div className="card card-glass" style={{ marginTop: '1rem', padding: '1rem' }}>
           <div className="pill">Planner publish path</div>
           <p className="muted" style={{ marginTop: '0.7rem', marginBottom: 0 }}>
-            To make a product appear in the live planner, set <strong>Planner enabled</strong>, choose both the <strong>planner role</strong> and <strong>planner category path</strong>, upload a `.glb`, run asset validation, move the product to staging, and then publish it.
+            To make a product appear in the live planner, set <strong>Planner enabled</strong>, choose both the <strong>planner role</strong> and <strong>planner category path</strong>, upload a `.glb`, run asset validation, move the product to staging, and then publish it. The planner now reads the model&apos;s native meter scale directly from the uploaded `.glb`.
           </p>
           {plannerBreadcrumb && (
             <p className="muted" style={{ marginTop: '0.7rem', marginBottom: 0 }}>
               Current planner path: <strong>{plannerBreadcrumb}</strong>
             </p>
           )}
+        </div>
+
+        <div className="card card-glass" style={{ marginTop: '1rem', padding: '1rem' }}>
+          <div className="pill">Composite product authoring</div>
+          <p className="muted" style={{ marginTop: '0.7rem', marginBottom: 0 }}>
+            Use <strong>leaf</strong> for the smallest immutable sellable part, and use <strong>assembly</strong> for a configurable parent such as a sink base cabinet that owns slots like countertop, sink, faucet, door, and handle.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+            <label className="form-field">
+              <span>Planner structure</span>
+              <select className="input" value={form.composite_node_kind} onChange={(event) => updateForm('composite_node_kind', event.target.value as PlannerCompositeNodeKind)}>
+                <option value="leaf">Leaf part</option>
+                <option value="assembly">Assembly template</option>
+              </select>
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+            <button type="button" className="btn btn-outline" onClick={() => applyCompositeDraft(buildLeafCompositeDraft(), 'leaf', 'Leaf composite starter applied.')}>Use leaf starter</button>
+            <button type="button" className="btn btn-outline" onClick={() => applyCompositeDraft(buildAssemblyCompositeDraft(), 'assembly', 'Assembly starter applied.')}>Use assembly starter</button>
+            <button type="button" className="btn btn-outline" onClick={() => applyCompositeDraft(buildSinkBaseCompositeDraft(), 'assembly', 'Sink-base composite starter applied.')}>Use sink-base starter</button>
+          </div>
+          <p className="muted" style={{ marginTop: '0.7rem', marginBottom: 0 }}>
+            Saving will force `interaction_schema.node_kind` to match the planner structure selected above. The runtime will start consuming these slots and replacement rules in the next implementation slice.
+          </p>
         </div>
 
         <div style={{ display: 'grid', gap: '1rem', marginTop: '1.5rem' }}>
@@ -628,14 +697,17 @@ export default function ProductDesignerSettingsPage() {
           </label>
           <label className="form-field">
             <span>Interaction schema JSON</span>
+            <span className="muted">Use this for node kind and animation affordances such as door open or close metadata.</span>
             <textarea className="input" rows={5} value={form.interaction_schema} onChange={(event) => updateForm('interaction_schema', event.target.value)} />
           </label>
           <label className="form-field">
             <span>Constraint schema JSON</span>
+            <span className="muted">Use `slots` to define named child attachment points such as countertop, sink, faucet, front, and handle.</span>
             <textarea className="input" rows={6} value={form.constraint_schema} onChange={(event) => updateForm('constraint_schema', event.target.value)} />
           </label>
           <label className="form-field">
             <span>Compatibility schema JSON</span>
+            <span className="muted">Use `default_children`, `replacement_groups`, and `cutout_rules` to define valid replacements and countertop variant swaps.</span>
             <textarea className="input" rows={6} value={form.compatibility_schema} onChange={(event) => updateForm('compatibility_schema', event.target.value)} />
           </label>
           <label className="form-field">

@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /erp/employees/departments route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 
 import useErrorPopup from '../../../hooks/useErrorPopup';
@@ -31,6 +37,7 @@ interface DepartmentFormState {
 
 const DEPARTMENT_API = 'http://localhost:8000/api/departments/';
 
+/** Creates the empty form used by this module. */
 const createEmptyForm = (): DepartmentFormState => ({
   name: '',
   code: '',
@@ -43,6 +50,7 @@ const createEmptyForm = (): DepartmentFormState => ({
   allowHalfDayPaidRest: true,
 });
 
+/** Sorts the departments into a stable display or processing order. */
 const sortDepartments = (departments: Department[]) => {
   return [...departments].sort((left, right) => {
     if (left.is_active !== right.is_active) {
@@ -52,6 +60,7 @@ const sortDepartments = (departments: Department[]) => {
   });
 };
 
+/** Flattens the api errors into a simpler structure. */
 const flattenApiErrors = (data: unknown): string[] => {
   if (!data || typeof data !== 'object') {
     return ['Something went wrong.'];
@@ -85,6 +94,7 @@ const flattenApiErrors = (data: unknown): string[] => {
   return messages.length > 0 ? messages : ['Something went wrong.'];
 };
 
+/** Maps the department to form into the structure this file needs. */
 const mapDepartmentToForm = (department: Department): DepartmentFormState => ({
   name: department.name,
   code: department.code || '',
@@ -97,6 +107,7 @@ const mapDepartmentToForm = (department: Department): DepartmentFormState => ({
   allowHalfDayPaidRest: department.allow_half_day_paid_rest,
 });
 
+/** Builds the payload used by this module. */
 const buildPayload = (form: DepartmentFormState) => ({
   name: form.name.trim(),
   code: form.code.trim() || null,
@@ -109,6 +120,7 @@ const buildPayload = (form: DepartmentFormState) => ({
   allow_half_day_paid_rest: form.allowHalfDayPaidRest,
 });
 
+/** Renders the departments page. */
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [form, setForm] = useState<DepartmentFormState>(createEmptyForm);

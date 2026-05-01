@@ -1,7 +1,14 @@
 'use client';
 
+/**
+ * Editor-side kitchen designer component.
+ *
+ * Files in this folder render the planner workspace controls that let users inspect, edit, and price a room design.
+ */
+
 import { usePlannerStore } from '../state/plannerStore';
 
+/** Renders the price bar component used by this module. */
 export default function PriceBar() {
   const nodes = usePlannerStore((state) => state.nodes);
   const total = nodes.reduce((sum, node) => sum + node.price, 0);

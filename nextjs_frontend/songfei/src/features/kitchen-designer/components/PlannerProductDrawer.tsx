@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Reusable kitchen designer UI component.
+ *
+ * These components support the planner flow with review widgets, subheaders, drawers, and guided controls.
+ */
+
 import { useEffect, useMemo, useState } from 'react';
 
 import useErrorPopup from '@/app/hooks/useErrorPopup';
@@ -15,6 +21,7 @@ interface PlannerProductDrawerProps {
   onClose: () => void;
 }
 
+/** Sorts the base products into a stable display or processing order. */
 function sortBaseProducts(products: PlannerCatalogProduct[]) {
   return [...products].sort((left, right) => {
     if (left.product_id === 'G01') {
@@ -29,6 +36,7 @@ function sortBaseProducts(products: PlannerCatalogProduct[]) {
   });
 }
 
+/** Renders the planner product drawer component used by this module. */
 export default function PlannerProductDrawer({ open, selectedPath, onClose }: PlannerProductDrawerProps) {
   const { showErrorPopup } = useErrorPopup();
   const addNodeFromProduct = usePlannerStore((state) => state.addNodeFromProduct);
@@ -143,7 +151,9 @@ export default function PlannerProductDrawer({ open, selectedPath, onClose }: Pl
                 </div>
                 <div>{product.name}</div>
                 <div className="muted">
-                  {(product.width_mm || '—')}×{(product.depth_mm || '—')}×{(product.height_mm || '—')} mm
+                  {product.glb_file_url
+                    ? 'Uses native GLB scale'
+                    : `${product.width_mm || '—'}×${product.depth_mm || '—'}×${product.height_mm || '—'} mm`}
                 </div>
                 <div className="planner-product-card-footer">
                   <span>${product.price.toFixed(2)}</span>

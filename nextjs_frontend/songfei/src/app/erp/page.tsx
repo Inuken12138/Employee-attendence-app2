@@ -1,5 +1,12 @@
+/**
+ * Landing dashboard for the internal ERP workspace.
+ *
+ * It acts as a lightweight operational cockpit with links into the people and
+ * inventory modules plus placeholder health metrics.
+ */
 import Link from 'next/link';
 
+/** Shows the ERP summary cards and quick links into major operational modules. */
 export default function ErpDashboard() {
   return (
     <div className="grid-2">

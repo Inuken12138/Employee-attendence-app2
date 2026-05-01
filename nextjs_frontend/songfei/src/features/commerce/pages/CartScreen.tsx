@@ -1,5 +1,18 @@
 'use client';
 
+/**
+ * Feature-owned commerce screen.
+ *
+ * This keeps route wiring thin by placing the actual cart experience next to the cart API helpers and cart-specific components.
+ */
+
+/**
+ * Full shopping-cart experience for signed-in customers.
+ *
+ * This screen loads the active cart, lets users update or remove ordinary cart
+ * lines, preserves designer-managed bundle constraints, and submits checkout.
+ */
+
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 
@@ -10,6 +23,7 @@ import { checkoutCart, fetchCart, removeCartItem, updateCartItem } from '../api/
 import CartItemRow from '../components/CartItemRow';
 import type { Cart, Order } from '../types/cart';
 
+/** Coordinates cart loading, cart mutations, and checkout state for the cart route. */
 export default function CartScreen() {
   const { showErrorPopup } = useErrorPopup();
   const [cart, setCart] = useState<Cart | null>(null);
@@ -18,6 +32,7 @@ export default function CartScreen() {
   const [busyItemId, setBusyItemId] = useState<number | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
 
+  /** Fetches the latest cart snapshot unless the visitor is not signed in. */
   const loadCart = useCallback(async () => {
     if (!hasAuthToken()) {
       setLoading(false);
@@ -41,6 +56,7 @@ export default function CartScreen() {
     void loadCart();
   }, [loadCart]);
 
+  /** Handles the update quantity interaction for this component. */
   const handleUpdateQuantity = async (itemId: number, quantity: number) => {
     setBusyItemId(itemId);
     try {
@@ -54,6 +70,7 @@ export default function CartScreen() {
     }
   };
 
+  /** Handles the remove interaction for this component. */
   const handleRemove = async (itemId: number) => {
     setBusyItemId(itemId);
     try {
@@ -67,6 +84,7 @@ export default function CartScreen() {
     }
   };
 
+  /** Handles the checkout interaction for this component. */
   const handleCheckout = async () => {
     setCheckingOut(true);
     try {
@@ -98,6 +116,7 @@ export default function CartScreen() {
     );
   }
 
+  /** Sends a quantity change for one line item and refreshes the cart afterward. */
   if (loading) {
     return <div className="muted" style={{ padding: '2rem' }}>Loading cart…</div>;
   }

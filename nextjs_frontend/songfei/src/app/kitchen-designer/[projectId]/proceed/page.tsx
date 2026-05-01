@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /kitchen-designer/[projectId]/proceed route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -9,6 +15,7 @@ import { buildLoginRedirectUrl, hasAuthToken } from '@/lib/auth';
 import { addPlannerProjectToBag, fetchPlannerProjectReview } from '@/features/kitchen-designer/api/plannerApi';
 import type { PlannerProjectReviewResponse } from '@/features/kitchen-designer/types/planner';
 
+/** Renders the kitchen designer proceed page. */
 export default function KitchenDesignerProceedPage() {
   const params = useParams();
   const router = useRouter();
@@ -45,6 +52,7 @@ export default function KitchenDesignerProceedPage() {
     void loadReview();
   }, [projectId, router, showErrorPopup]);
 
+  /** Handles the add to bag interaction for this component. */
   const handleAddToBag = async () => {
     if (!projectId) {
       return;

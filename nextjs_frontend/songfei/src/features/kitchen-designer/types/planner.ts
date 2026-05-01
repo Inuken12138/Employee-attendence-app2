@@ -1,3 +1,8 @@
+/**
+ * TypeScript types for the kitchen designer feature.
+ *
+ * New developers can read this file to understand the shape of planner rooms, nodes, projects, review payloads, and related API data.
+ */
 export interface PlannerCatalogProduct {
   id: number;
   product_id: string;
@@ -18,6 +23,93 @@ export interface PlannerCatalogProduct {
   height_mm: number | null;
   allow_vertical_movement: boolean;
   glb_file_url: string | null;
+  composite_schema: PlannerCompositeSchema;
+}
+
+export type PlannerCompositeNodeKind = 'leaf' | 'assembly';
+export type PlannerCompositeSlotCardinality = 'single' | 'multiple';
+
+export interface PlannerCompositeAnimation {
+  part_key: string;
+  trigger: string;
+  type: string;
+  open_degrees?: number;
+  closed_degrees?: number;
+  duration_ms?: number;
+}
+
+export interface PlannerCompositeSlot {
+  slot_key: string;
+  label: string;
+  required?: boolean;
+  allow_remove?: boolean;
+  cardinality?: PlannerCompositeSlotCardinality;
+  allowed_roles?: string[];
+}
+
+export interface PlannerCompositeDefaultChild {
+  slot_key: string;
+  product_code?: string;
+  product_id?: number;
+}
+
+export interface PlannerCompositeReplacementGroup {
+  slot_key: string;
+  allowed_product_codes?: string[];
+  allowed_product_ids?: number[];
+}
+
+export interface PlannerCompositeCutoutRule {
+  trigger_slot_key: string;
+  target_slot_key: string;
+  match_product_codes?: string[];
+  match_product_ids?: number[];
+  variant_product_code?: string;
+  variant_product_id?: number;
+}
+
+export interface PlannerCompositeSchema {
+  enabled: boolean;
+  node_kind: PlannerCompositeNodeKind;
+  animations: PlannerCompositeAnimation[];
+  slots: PlannerCompositeSlot[];
+  default_children: PlannerCompositeDefaultChild[];
+  replacement_groups: PlannerCompositeReplacementGroup[];
+  cutout_rules: PlannerCompositeCutoutRule[];
+}
+
+export interface PlannerNodeCompositeItem {
+  itemId: string;
+  slotKey: string;
+  productId: number | null;
+  productCode: string | null;
+  label: string;
+  plannerRole: string | null;
+  glbFileUrl: string | null;
+  assetPath: string | null;
+  imageUrl: string | null;
+  widthMm: number | null;
+  depthMm: number | null;
+  heightMm: number | null;
+  price: number | null;
+  quantity: number;
+  source: 'default' | 'user';
+  isRemoved: boolean;
+}
+
+export interface PlannerNodeCompositeSlot {
+  slotKey: string;
+  label: string;
+  required: boolean;
+  allowRemove: boolean;
+  cardinality: PlannerCompositeSlotCardinality;
+  allowedRoles: string[];
+  items: PlannerNodeCompositeItem[];
+}
+
+export interface PlannerNodeCompositeState {
+  schema: PlannerCompositeSchema;
+  slots: PlannerNodeCompositeSlot[];
 }
 
 export interface PlannerTaxonomyPath {
@@ -46,6 +138,8 @@ export interface PlannerNode {
   };
   rotationY: number;
   price: number;
+  nodeKind: PlannerCompositeNodeKind;
+  composite: PlannerNodeCompositeState | null;
 }
 
 export type PlannerStage = 'define-space' | 'make-it-yours' | 'make-it-happen';

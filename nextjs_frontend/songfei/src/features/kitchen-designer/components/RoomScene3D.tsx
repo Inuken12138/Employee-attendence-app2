@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Reusable kitchen designer UI component.
+ *
+ * These components support the planner flow with review widgets, subheaders, drawers, and guided controls.
+ */
+
 import type { PlannerRoom } from '../types/planner';
 import { usePlannerStore } from '../state/plannerStore';
 import BabylonPlannerGame from '../babylon/BabylonPlannerGame';
@@ -9,6 +15,7 @@ interface RoomScene3DProps {
   compact?: boolean;
 }
 
+/** Renders the room scene3 d component used by this module. */
 export default function RoomScene3D({ room, compact = false }: RoomScene3DProps) {
   const nodes = usePlannerStore((state) => state.nodes);
 

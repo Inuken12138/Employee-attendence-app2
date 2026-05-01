@@ -1,4 +1,10 @@
 'use client';
+
+/**
+ * Defines the Next.js page module for the /erp/inventory/[id] route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
@@ -17,6 +23,7 @@ interface InventoryItem {
   inventory_condition?: string;
 }
 
+/** Renders the inventory detail page. */
 export default function InventoryDetailPage() {
   const params = useParams();
   const itemId = params?.id;
@@ -43,6 +50,7 @@ export default function InventoryDetailPage() {
     fetchItem();
   }, [itemId, showErrorPopup]);
 
+  /** Returns the image src for the current input. */
   const getImageSrc = (image?: string | null) => {
     if (!image) {
       return null;
@@ -50,6 +58,7 @@ export default function InventoryDetailPage() {
     return image.startsWith('http') ? image : `http://localhost:8000${image}`;
   };
 
+  /** Updates the image and returns the next value. */
   const updateImage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newImage || !itemId) {

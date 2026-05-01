@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /erp/employees/payroll route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import { memo, startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 
 import useErrorPopup from '../../../hooks/useErrorPopup';
@@ -63,6 +69,7 @@ interface AttendanceEmployee {
   employeeName: string | null;
   department: string | null;
   rosterAssignment: PayrollRosterAssignmentPayload | null;
+  overtimeGraceMinutes: number;
   days: Record<string, DayRecord>;
 }
 
@@ -176,7 +183,7 @@ interface OvertimeDecisionSegment {
 }
 
 interface OvertimeDecision {
-  id: number;
+  id?: number;
   employee: number;
   employee_name?: string | null;
   worker_id?: string | null;
@@ -229,6 +236,7 @@ interface ParsedEmployeePayload {
   employee_name?: string | null;
   department?: string | null;
   roster_assignment?: PayrollRosterAssignmentPayload | null;
+  overtime_grace_minutes?: number | null;
   day_logs?: Record<string, string[]>;
 }
 
@@ -271,6 +279,7 @@ interface SavedEmployeePayload {
   employee_name?: string | null;
   department?: string | null;
   roster_assignment?: PayrollRosterAssignmentPayload | null;
+  overtime_grace_minutes?: number | null;
   days?: Record<string, SavedDayPayload>;
 }
 
@@ -364,8 +373,11 @@ const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, index) => String(index).pa
 const MINUTE_PRESETS = ['00', '05', '10', '15', '30', '45'];
 const WEEKDAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const UNSAVED_ATTENDANCE_MESSAGE = 'You have unsaved attendance changes, including overtime decisions. Save a draft if you want to keep them. Leave this page and discard those changes?';
 
+/** Returns an empty shift value. */
 const emptyShift = (): ShiftPayload => ({ in: '', out: '', status: 'missing' });
+/** Builds a blank day record value used by this module. */
 const buildBlankDayRecord = (): DayRecord => ({
   rawLogs: [],
   morning: emptyShift(),
@@ -373,6 +385,7 @@ const buildBlankDayRecord = (): DayRecord => ({
   editable: true,
 });
 
+/** Creates the initial leave form used when the UI needs a clean starting state. */
 const createInitialLeaveForm = (year: number, month: number): LeaveFormState => ({
   employeeId: '',
   leaveDate: buildIsoDate(year, month, 1),
@@ -386,6 +399,7 @@ const createInitialLeaveForm = (year: number, month: number): LeaveFormState => 
   managerNote: '',
 });
 
+/** Creates the initial paid rest form used when the UI needs a clean starting state. */
 const createInitialPaidRestForm = (year: number, month: number): PaidRestFormState => ({
   employeeId: '',
   restDate: buildIsoDate(year, month, 1),
@@ -396,7 +410,9 @@ const createInitialPaidRestForm = (year: number, month: number): PaidRestFormSta
   managerNote: '',
 });
 
+/** Returns the error message for the current input. */
 const getErrorMessage = (data: unknown): string | undefined => {
+  /** Flattens the errors into a simpler structure. */
   const flattenErrors = (value: unknown): string | undefined => {
     if (!value) {
       return undefined;
@@ -426,12 +442,15 @@ const getErrorMessage = (data: unknown): string | undefined => {
   return flattenErrors(data);
 };
 
+/** Returns the days in month for the current input. */
 const getDaysInMonth = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 
+/** Builds the iso date used by this module. */
 const buildIsoDate = (year: number, month: number, day: number) => (
   `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 );
 
+/** Builds the attendance meta used by this module. */
 const buildAttendanceMeta = (
   data: ParsedAttendanceResponse | SavedAttendanceResponse,
   status: string,
@@ -449,10 +468,13 @@ const buildAttendanceMeta = (
   };
 };
 
+/** Builds the utc date used by this module. */
 const buildUtcDate = (year: number, month: number, day: number) => new Date(Date.UTC(year, month - 1, day));
 
+/** Returns the weekday index for the current input. */
 const getWeekdayIndex = (utcDate: Date) => (utcDate.getUTCDay() + 6) % 7;
 
+/** Returns the calendar day meta for the current input. */
 const getCalendarDayMeta = (year: number, month: number, day: number) => {
   const utcDate = buildUtcDate(year, month, day);
   const weekdayIndex = getWeekdayIndex(utcDate);
@@ -464,6 +486,7 @@ const getCalendarDayMeta = (year: number, month: number, day: number) => {
   };
 };
 
+/** Coerces the shift status into the allowed set of values. */
 const coerceShiftStatus = (value: unknown): ShiftStatus => {
   if (
     value === 'present'
@@ -479,6 +502,7 @@ const coerceShiftStatus = (value: unknown): ShiftStatus => {
   return 'missing';
 };
 
+/** Transforms the time to minutes into a time-related value. */
 const timeToMinutes = (value: string) => {
   const normalizedValue = normalizeTimeValue(value);
   if (!normalizedValue) {
@@ -489,10 +513,12 @@ const timeToMinutes = (value: string) => {
   return Number.parseInt(hourText, 10) * 60 + Number.parseInt(minuteText, 10);
 };
 
+/** Returns whether overlay protected status. */
 const isOverlayProtectedStatus = (status: ShiftStatus) => (
   status === 'approved_leave' || status === 'unapproved_leave' || status === 'paid_rest'
 );
 
+/** Formats the minute duration into display-ready text. */
 const formatMinuteDuration = (minutes: number) => {
   if (!Number.isFinite(minutes) || minutes <= 0) {
     return '0m';
@@ -509,6 +535,7 @@ const formatMinuteDuration = (minutes: number) => {
   return `${minutePortion}m`;
 };
 
+/** Returns the leave status label for the current input. */
 const getLeaveStatusLabel = (status: LeaveSubmissionStatus) => {
   switch (status) {
     case 'draft':
@@ -526,6 +553,7 @@ const getLeaveStatusLabel = (status: LeaveSubmissionStatus) => {
   }
 };
 
+/** Returns the paid rest status label for the current input. */
 const getPaidRestStatusLabel = (status: PaidRestSubmissionStatus) => {
   switch (status) {
     case 'draft':
@@ -541,6 +569,7 @@ const getPaidRestStatusLabel = (status: PaidRestSubmissionStatus) => {
   }
 };
 
+/** Returns the leave shift targets for the current input. */
 const getLeaveShiftTargets = (leaveRecord: LeaveRecord): ShiftKey[] => {
   if (leaveRecord.linked_attendance_shift === 'morning' || leaveRecord.linked_attendance_shift === 'afternoon') {
     return [leaveRecord.linked_attendance_shift];
@@ -567,6 +596,7 @@ const getLeaveShiftTargets = (leaveRecord: LeaveRecord): ShiftKey[] => {
   return targets.length > 0 ? targets : ['morning'];
 };
 
+/** Returns the paid rest shift targets for the current input. */
 const getPaidRestShiftTargets = (paidRestRequest: PaidRestRequest): ShiftKey[] => {
   if (paidRestRequest.linked_attendance_shift === 'morning' || paidRestRequest.linked_attendance_shift === 'afternoon') {
     return [paidRestRequest.linked_attendance_shift];
@@ -574,6 +604,7 @@ const getPaidRestShiftTargets = (paidRestRequest: PaidRestRequest): ShiftKey[] =
   return ['morning', 'afternoon'];
 };
 
+/** Builds the leave overlay used by this module. */
 const buildLeaveOverlay = (
   sourceEmployees: AttendanceEmployee[],
   leaveRecords: LeaveRecord[],
@@ -639,6 +670,7 @@ const buildLeaveOverlay = (
   });
 };
 
+/** Builds the paid rest overlay used by this module. */
 const buildPaidRestOverlay = (
   sourceEmployees: AttendanceEmployee[],
   paidRestRequests: PaidRestRequest[],
@@ -698,6 +730,7 @@ const buildPaidRestOverlay = (
   });
 };
 
+/** Formats the day balance into display-ready text. */
 const formatDayBalance = (value: string | number) => {
   const parsedValue = Number.parseFloat(String(value || 0));
   if (!Number.isFinite(parsedValue)) {
@@ -706,10 +739,12 @@ const formatDayBalance = (value: string | number) => {
   return Number.isInteger(parsedValue) ? String(parsedValue) : parsedValue.toFixed(2);
 };
 
+/** Builds the overtime decision key used by this module. */
 const buildOvertimeDecisionKey = (employeeId: number, attendanceDate: string, shiftKey: ShiftKey) => (
   `${employeeId}|${attendanceDate}|${shiftKey}`
 );
 
+/** Returns the overtime decision label for the current input. */
 const getOvertimeDecisionLabel = (candidate: OvertimeCandidate) => {
   if (!candidate.decision || candidate.decision.status === 'pending') {
     return `Potential OT ${formatMinuteDuration(candidate.potentialMinutes)}`;
@@ -726,6 +761,7 @@ const getOvertimeDecisionLabel = (candidate: OvertimeCandidate) => {
   return `OT split ${formatMinuteDuration(candidate.decision.approved_ot_minutes)} approved`;
 };
 
+/** Returns the overtime decision tone for the current input. */
 const getOvertimeDecisionTone = (candidate: OvertimeCandidate) => {
   if (!candidate.decision || candidate.decision.status === 'pending') {
     return 'pending';
@@ -739,6 +775,23 @@ const getOvertimeDecisionTone = (candidate: OvertimeCandidate) => {
   return 'partial';
 };
 
+/** Sorts the overtime decisions into a stable display or processing order. */
+const sortOvertimeDecisions = (decisions: OvertimeDecision[]) => (
+  [...decisions].sort((left, right) => {
+    const dateCompare = left.attendance_date.localeCompare(right.attendance_date);
+    if (dateCompare !== 0) {
+      return dateCompare;
+    }
+
+    if (left.employee !== right.employee) {
+      return left.employee - right.employee;
+    }
+
+    return left.attendance_shift.localeCompare(right.attendance_shift);
+  })
+);
+
+/** Builds the partial overtime segments used by this module. */
 const buildPartialOvertimeSegments = (
   candidate: OvertimeCandidate,
   approvedStart: string,
@@ -798,6 +851,7 @@ const buildPartialOvertimeSegments = (
   return segments;
 };
 
+/** Normalizes the time value into the shape expected by this module. */
 const normalizeTimeValue = (value: string): string => {
   const match = String(value || '').trim().match(/^(\d{1,2}):(\d{1,2})$/);
   if (!match) {
@@ -813,12 +867,14 @@ const normalizeTimeValue = (value: string): string => {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 };
 
+/** Splits the time value into smaller pieces for further processing. */
 const splitTimeValue = (value: string) => {
   const normalizedValue = normalizeTimeValue(value) || '00:00';
   const [hour, minute] = normalizedValue.split(':');
   return { hour, minute };
 };
 
+/** Formats the time preview into display-ready text. */
 const formatTimePreview = (value: string) => {
   const normalizedValue = normalizeTimeValue(value);
   if (!normalizedValue) {
@@ -833,16 +889,19 @@ const formatTimePreview = (value: string) => {
   return `${hour12}:${minuteText} ${meridiem}`;
 };
 
+/** Adjusts the time by minutes by the requested amount. */
 const adjustTimeByMinutes = (value: string, delta: number) => {
   const normalizedValue = normalizeTimeValue(value) || '00:00';
   const [hourText, minuteText] = normalizedValue.split(':');
   const baseMinutes = Number.parseInt(hourText, 10) * 60 + Number.parseInt(minuteText, 10);
+  /** Adjusts the ed minutes by the requested amount. */
   const adjustedMinutes = (baseMinutes + delta + 1440) % 1440;
   const nextHour = Math.floor(adjustedMinutes / 60);
   const nextMinute = adjustedMinutes % 60;
   return `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`;
 };
 
+/** Returns the suggested time for the current input. */
 const getSuggestedTime = (step: ShiftKey, field: 'in' | 'out', rosterDay?: ResolvedRosterDay | null) => {
   if (rosterDay?.isWorking) {
     if (step === 'morning') {
@@ -862,6 +921,7 @@ const getSuggestedTime = (step: ShiftKey, field: 'in' | 'out', rosterDay?: Resol
   return field === 'in' ? '13:00' : '17:00';
 };
 
+/** Returns the shift label for the current input. */
 const getShiftLabel = (shift: ShiftPayload) => {
   if (shift.status === 'off') {
     return 'Roster off';
@@ -892,6 +952,7 @@ const getShiftLabel = (shift: ShiftPayload) => {
   return `${checkIn} - ${checkOut}`;
 };
 
+/** Returns the expected shift label for the current input. */
 const getExpectedShiftLabel = (rosterDay: ResolvedRosterDay | null) => {
   if (!rosterDay?.isWorking) {
     return null;
@@ -904,6 +965,7 @@ const getExpectedShiftLabel = (rosterDay: ResolvedRosterDay | null) => {
   return `${rosterDay.morningIn}-${rosterDay.morningOut} / ${rosterDay.afternoonIn}-${rosterDay.afternoonOut}`;
 };
 
+/** Resolves the roster day from the available inputs. */
 const resolveRosterDay = (
   rosterAssignment: PayrollRosterAssignmentPayload | null,
   year: number,
@@ -931,6 +993,7 @@ const resolveRosterDay = (
 
   const targetDate = buildUtcDate(year, month, day);
   const anchorDate = buildUtcDate(anchorYear, anchorMonth, anchorDay);
+  /** Returns the week start for the current input. */
   const getWeekStart = (utcDate: Date) => {
     const nextDate = new Date(utcDate.getTime());
     nextDate.setUTCDate(nextDate.getUTCDate() - getWeekdayIndex(utcDate));
@@ -940,6 +1003,7 @@ const resolveRosterDay = (
   const targetWeekStart = getWeekStart(targetDate);
   const anchorWeekStart = getWeekStart(anchorDate);
   const weekDelta = Math.floor((targetWeekStart.getTime() - anchorWeekStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+  /** Helper used by this module to manage week index. */
   const weekIndex = ((weekDelta % cycleLengthWeeks) + cycleLengthWeeks) % cycleLengthWeeks + 1;
   const dayOfWeek = getWeekdayIndex(targetDate);
 
@@ -963,6 +1027,7 @@ const resolveRosterDay = (
   };
 };
 
+/** Builds the overtime candidate used by this module. */
 const buildOvertimeCandidate = (
   employee: AttendanceEmployee,
   employeeIndex: number,
@@ -992,6 +1057,12 @@ const buildOvertimeCandidate = (
     return null;
   }
 
+  const potentialMinutes = actualCheckoutMinutes - rosterEndMinutes;
+  const overtimeGraceMinutes = Math.max(0, Number(employee.overtimeGraceMinutes) || 0);
+  if (potentialMinutes <= overtimeGraceMinutes) {
+    return null;
+  }
+
   const attendanceDate = buildIsoDate(year, month, day);
   return {
     employeeId: employee.employeeDbId,
@@ -1004,11 +1075,12 @@ const buildOvertimeCandidate = (
     rosterStartTime,
     rosterEndTime,
     actualCheckoutTime,
-    potentialMinutes: actualCheckoutMinutes - rosterEndMinutes,
+    potentialMinutes,
     decision: overtimeDecisionMap.get(buildOvertimeDecisionKey(employee.employeeDbId, attendanceDate, shiftKey)) || null,
   };
 };
 
+/** Returns whether roster off day. */
 const isRosterOffDay = (dayRecord: DayRecord, rosterDay: ResolvedRosterDay | null) => {
   const hasPersistedOffStatus = dayRecord.morning.status === 'off' && dayRecord.afternoon.status === 'off';
   if (hasPersistedOffStatus) {
@@ -1024,6 +1096,7 @@ const isRosterOffDay = (dayRecord: DayRecord, rosterDay: ResolvedRosterDay | nul
   );
 };
 
+/** Helper used by this module to manage day needs resolution. */
 const dayNeedsResolution = (dayRecord: DayRecord, rosterDay: ResolvedRosterDay | null) => {
   if (isRosterOffDay(dayRecord, rosterDay)) {
     return false;
@@ -1032,6 +1105,7 @@ const dayNeedsResolution = (dayRecord: DayRecord, rosterDay: ResolvedRosterDay |
   return dayRecord.morning.status === 'missing' || dayRecord.afternoon.status === 'missing';
 };
 
+/** Returns the shift tone for the current input. */
 const getShiftTone = (dayRecord: DayRecord, shiftKey: ShiftKey): ShiftTone => {
   if (!dayRecord.editable) {
     return 'locked';
@@ -1050,6 +1124,7 @@ const getShiftTone = (dayRecord: DayRecord, shiftKey: ShiftKey): ShiftTone => {
   return shift.status === 'missing' ? 'missing' : 'resolved';
 };
 
+/** Builds the day record from logs used by this module. */
 const buildDayRecordFromLogs = (logs: string[]): DayRecord => {
   if (logs.length === 4) {
     return {
@@ -1068,6 +1143,7 @@ const buildDayRecordFromLogs = (logs: string[]): DayRecord => {
   };
 };
 
+/** Builds the day record from saved used by this module. */
 const buildDayRecordFromSaved = (dayPayload?: SavedDayPayload): DayRecord => {
   const rawLogs = Array.isArray(dayPayload?.raw_logs) ? dayPayload?.raw_logs || [] : [];
   const morning = dayPayload?.morning || {};
@@ -1089,6 +1165,7 @@ const buildDayRecordFromSaved = (dayPayload?: SavedDayPayload): DayRecord => {
   };
 };
 
+/** Maps the parsed employees into the structure this file needs. */
 const mapParsedEmployees = (data: ParsedAttendanceResponse): AttendanceEmployee[] => {
   const parsedDayNumbers = Array.from({ length: data.days_in_month || 31 }, (_, index) => index + 1);
 
@@ -1107,11 +1184,13 @@ const mapParsedEmployees = (data: ParsedAttendanceResponse): AttendanceEmployee[
       employeeName: employee.employee_name || null,
       department: employee.department || null,
       rosterAssignment: employee.roster_assignment || null,
+      overtimeGraceMinutes: Number(employee.overtime_grace_minutes || 0),
       days,
     };
   });
 };
 
+/** Maps the saved employees into the structure this file needs. */
 const mapSavedEmployees = (data: SavedAttendanceResponse): AttendanceEmployee[] => {
   const savedDayNumbers = Array.from({ length: data.days_in_month || 31 }, (_, index) => index + 1);
 
@@ -1129,11 +1208,13 @@ const mapSavedEmployees = (data: SavedAttendanceResponse): AttendanceEmployee[] 
       employeeName: employee.employee_name || null,
       department: employee.department || null,
       rosterAssignment: employee.roster_assignment || null,
+      overtimeGraceMinutes: Number(employee.overtime_grace_minutes || 0),
       days,
     };
   });
 };
 
+/** Renders the time picker field component used by this module. */
 function TimePickerField({ label, value, onChange }: TimePickerFieldProps) {
   const { hour, minute } = splitTimeValue(value);
 
@@ -1351,6 +1432,7 @@ const AttendanceEmployeeRow = memo(function AttendanceEmployeeRow({
   );
 });
 
+/** Renders the employee payroll page. */
 export default function EmployeePayrollPage() {
   const defaultYear = new Date().getFullYear();
   const defaultMonth = new Date().getMonth() + 1;
@@ -1367,6 +1449,7 @@ export default function EmployeePayrollPage() {
   const [paidRestRecords, setPaidRestRecords] = useState<PaidRestRequest[]>([]);
   const [paidRestBalances, setPaidRestBalances] = useState<PaidRestBalance[]>([]);
   const [overtimeDecisions, setOvertimeDecisions] = useState<OvertimeDecision[]>([]);
+  const [savedOvertimeDecisions, setSavedOvertimeDecisions] = useState<OvertimeDecision[]>([]);
   const [leaveForm, setLeaveForm] = useState<LeaveFormState>(() => createInitialLeaveForm(defaultYear, defaultMonth));
   const [paidRestForm, setPaidRestForm] = useState<PaidRestFormState>(() => createInitialPaidRestForm(defaultYear, defaultMonth));
   const [isUploading, setIsUploading] = useState(false);
@@ -1380,9 +1463,11 @@ export default function EmployeePayrollPage() {
   const [isLoadingEmployeeDirectory, setIsLoadingEmployeeDirectory] = useState(false);
   const [isSavingFinal, setIsSavingFinal] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isReopeningFinal, setIsReopeningFinal] = useState(false);
   const [isSavingLeave, setIsSavingLeave] = useState(false);
   const [isSavingPaidRest, setIsSavingPaidRest] = useState(false);
-  const [isSavingOvertime, setIsSavingOvertime] = useState(false);
+  const isSavingOvertime = false;
+  const [hasLocalDraftChanges, setHasLocalDraftChanges] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [activePopup, setActivePopup] = useState<ResolvePopupState | null>(null);
   const [activeOvertimePopup, setActiveOvertimePopup] = useState<OvertimePopupState | null>(null);
@@ -1407,6 +1492,28 @@ export default function EmployeePayrollPage() {
     () => attendanceHistory.filter((record) => record.status === 'draft'),
     [attendanceHistory],
   );
+  const missingActiveAttendanceEmployees = useMemo(() => {
+    if (!attendanceMeta || isLoadingEmployeeDirectory) {
+      return [] as EmployeeDirectoryItem[];
+    }
+
+    const coveredEmployeeIds = new Set(
+      employees
+        .map((employee) => employee.employeeDbId)
+        .filter((employeeId): employeeId is number => typeof employeeId === 'number'),
+    );
+
+    return employeeDirectory.filter((employee) => !coveredEmployeeIds.has(employee.id));
+  }, [attendanceMeta, employeeDirectory, employees, isLoadingEmployeeDirectory]);
+  const missingActiveAttendanceLabel = useMemo(() => {
+    if (missingActiveAttendanceEmployees.length === 0) {
+      return '';
+    }
+
+    const visibleLabels = missingActiveAttendanceEmployees.slice(0, 8).map((employee) => employee.worker_id || employee.name);
+    const remainderCount = missingActiveAttendanceEmployees.length - visibleLabels.length;
+    return `${visibleLabels.join(', ')}${remainderCount > 0 ? ` and ${remainderCount} more` : ''}`;
+  }, [missingActiveAttendanceEmployees]);
   const parsedFileCount = useMemo(
     () => parsedSourceFiles.filter((sourceFile) => sourceFile.status === 'parsed').length,
     [parsedSourceFiles],
@@ -1498,6 +1605,8 @@ export default function EmployeePayrollPage() {
     ));
   }, [attendanceMeta, dayNumbers, employees]);
   const hasUnresolved = hasUnresolvedAttendance || hasPendingLeaveDecisions || hasPendingPaidRestDecisions || hasPendingOvertimeDecisions;
+  const hasMissingActiveAttendanceCoverage = missingActiveAttendanceEmployees.length > 0;
+  const hasFinalSaveBlockers = hasUnresolved || hasMissingActiveAttendanceCoverage;
 
   const activePopupDayRecord = activePopup
     ? employees[activePopup.employeeIndex]?.days[String(activePopup.day)] || buildBlankDayRecord()
@@ -1621,7 +1730,9 @@ export default function EmployeePayrollPage() {
       }
 
       startTransition(() => {
-        setOvertimeDecisions(Array.isArray(data.records) ? data.records : []);
+        const nextRecords = sortOvertimeDecisions(Array.isArray(data.records) ? data.records : []);
+        setSavedOvertimeDecisions(nextRecords);
+        setOvertimeDecisions(nextRecords);
       });
     } catch {
       if (shouldReportErrors) {
@@ -1631,6 +1742,14 @@ export default function EmployeePayrollPage() {
       setIsLoadingOvertime(false);
     }
   }, [showErrorPopup]);
+
+  const confirmDiscardLocalChanges = useCallback((actionLabel: string) => {
+    if (!hasLocalDraftChanges) {
+      return true;
+    }
+
+    return window.confirm(`${UNSAVED_ATTENDANCE_MESSAGE}\n\nContinue and ${actionLabel}?`);
+  }, [hasLocalDraftChanges]);
 
   const fetchAttendanceHistory = useCallback(async (shouldReportErrors = false) => {
     try {
@@ -1723,6 +1842,55 @@ export default function EmployeePayrollPage() {
     }));
   }, [activeMonth, activeYear]);
 
+  useEffect(() => {
+    if (!hasLocalDraftChanges || typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    const handleDocumentNavigation = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const anchor = target.closest('a[href]');
+      if (!(anchor instanceof HTMLAnchorElement) || anchor.target === '_blank' || anchor.hasAttribute('download')) {
+        return;
+      }
+
+      const nextUrl = new URL(anchor.href, window.location.href);
+      const currentUrl = new URL(window.location.href);
+      if (
+        nextUrl.pathname === currentUrl.pathname
+        && nextUrl.search === currentUrl.search
+        && nextUrl.hash === currentUrl.hash
+      ) {
+        return;
+      }
+
+      if (!window.confirm(UNSAVED_ATTENDANCE_MESSAGE)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('click', handleDocumentNavigation, true);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('click', handleDocumentNavigation, true);
+    };
+  }, [hasLocalDraftChanges]);
+
   const updateAttendancePeriod = useCallback((field: 'month' | 'year', rawValue: number) => {
     if (!Number.isFinite(rawValue)) {
       return;
@@ -1766,10 +1934,14 @@ export default function EmployeePayrollPage() {
     });
   }, []);
 
+  /** Helper used by this module to manage upload attendance. */
   const uploadAttendance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!attendanceFiles.length) {
       showErrorPopup('Please select at least one attendance file.');
+      return;
+    }
+    if (!confirmDiscardLocalChanges('discard these unsaved changes')) {
       return;
     }
 
@@ -1793,10 +1965,19 @@ export default function EmployeePayrollPage() {
         return;
       }
 
-      applyAttendanceState(buildAttendanceMeta(data, 'parsed'), mapParsedEmployees(data));
+      const parsedMeta = buildAttendanceMeta(data, 'parsed');
+      applyAttendanceState(parsedMeta, mapParsedEmployees(data));
+      if (parsedMeta.year === activeYear && parsedMeta.month === activeMonth) {
+        setOvertimeDecisions(savedOvertimeDecisions);
+      } else {
+        setSavedOvertimeDecisions([]);
+        setOvertimeDecisions([]);
+      }
+      setHasLocalDraftChanges(false);
       setParseWarnings(Array.isArray(data.warnings) ? data.warnings : []);
       setParsedSourceFiles(Array.isArray(data.source_files) ? data.source_files : []);
       setActivePopup(null);
+      setActiveOvertimePopup(null);
     } catch {
       showErrorPopup('Failed to upload attendance sheet.');
     } finally {
@@ -1804,11 +1985,16 @@ export default function EmployeePayrollPage() {
     }
   };
 
+  /** Loads the saved records needed by this screen. */
   const loadSavedRecords = async (mode: 'final' | 'draft', period?: { year: number; month: number }) => {
     const isDraft = mode === 'draft';
     const setter = isDraft ? setIsLoadingDraft : setIsLoadingSaved;
     const requestYear = period?.year ?? attendanceMeta?.year ?? uploadYear;
     const requestMonth = period?.month ?? attendanceMeta?.month ?? uploadMonth;
+
+    if (!confirmDiscardLocalChanges(`load the ${isDraft ? 'draft' : 'saved'} record`)) {
+      return;
+    }
 
     try {
       setter(true);
@@ -1821,10 +2007,19 @@ export default function EmployeePayrollPage() {
         return;
       }
 
-      applyAttendanceState(buildAttendanceMeta(data, mode), mapSavedEmployees(data));
+      const savedMeta = buildAttendanceMeta(data, mode);
+      applyAttendanceState(savedMeta, mapSavedEmployees(data));
+      if (savedMeta.year === activeYear && savedMeta.month === activeMonth) {
+        setOvertimeDecisions(savedOvertimeDecisions);
+      } else {
+        setSavedOvertimeDecisions([]);
+        setOvertimeDecisions([]);
+      }
+      setHasLocalDraftChanges(false);
       setParseWarnings([]);
       setParsedSourceFiles([]);
       setActivePopup(null);
+      setActiveOvertimePopup(null);
     } catch {
       showErrorPopup('Failed to load attendance records.');
     } finally {
@@ -1836,6 +2031,33 @@ export default function EmployeePayrollPage() {
     if (!attendanceMeta) {
       return null;
     }
+
+    const overtimePayload = overtimeCandidates.flatMap((candidate) => {
+      const decision = candidate.decision;
+      if (!decision || decision.status === 'pending') {
+        return [];
+      }
+
+      return [{
+        id: decision.id,
+        employee: candidate.employeeId,
+        attendance_date: candidate.attendanceDate,
+        attendance_shift: candidate.shiftKey,
+        roster_start_time: candidate.rosterStartTime,
+        roster_end_time: candidate.rosterEndTime,
+        actual_checkout_time: candidate.actualCheckoutTime,
+        status: decision.status,
+        decision_reason: decision.decision_reason || '',
+        narrowed_decision_enabled: Boolean(decision.narrowed_decision_enabled),
+        segments: (decision.segments || []).map((segment) => ({
+          id: segment.id,
+          segment_start_time: segment.segment_start_time,
+          segment_end_time: segment.segment_end_time,
+          status: segment.status,
+          note: segment.note || '',
+        })),
+      }];
+    });
 
     return {
       year: attendanceMeta.year,
@@ -1863,18 +2085,29 @@ export default function EmployeePayrollPage() {
           days: daysPayload,
         };
       }),
+      overtime_decisions: overtimePayload,
     };
-  }, [attendanceMeta, dayNumbers, employees]);
+  }, [attendanceMeta, dayNumbers, employees, overtimeCandidates]);
 
+  /** Helper used by this module to manage save records. */
   const saveRecords = async (mode: 'final' | 'draft') => {
     if (!attendanceMeta) {
       showErrorPopup('Upload or load a month before saving.');
       return;
     }
 
-    if (mode === 'final' && hasUnresolved) {
-      showErrorPopup('Resolve missing attendance, pending leave decisions, pending paid-rest decisions, and overtime decisions before final save.');
-      return;
+    if (mode === 'final') {
+      const blockers: string[] = [];
+      if (hasUnresolved) {
+        blockers.push('Resolve missing attendance, pending leave decisions, pending paid-rest decisions, and overtime decisions before final save.');
+      }
+      if (hasMissingActiveAttendanceCoverage) {
+        blockers.push(`Add every active employee to the attendance summary before final save. Missing rows for: ${missingActiveAttendanceLabel}.`);
+      }
+      if (blockers.length > 0) {
+        showErrorPopup(blockers.join(' '));
+        return;
+      }
     }
 
     const payload = buildSavePayload();
@@ -1897,14 +2130,59 @@ export default function EmployeePayrollPage() {
       }
 
       applyAttendanceState(buildAttendanceMeta(data, mode), mapSavedEmployees(data));
+      setHasLocalDraftChanges(false);
       setParseWarnings([]);
       setParsedSourceFiles([]);
       setActivePopup(null);
+      setActiveOvertimePopup(null);
+      void fetchOvertimeDecisions(attendanceMeta.year, attendanceMeta.month, true);
       void fetchAttendanceHistory();
     } catch {
       showErrorPopup('Failed to save attendance records.');
     } finally {
       setter(false);
+    }
+  };
+
+  const reopenFinalAsDraft = async () => {
+    if (!attendanceMeta || attendanceMeta.status !== 'final') {
+      showErrorPopup('Load a finalized attendance month before reopening it as draft.');
+      return;
+    }
+
+    if (!confirmDiscardLocalChanges('reopen the finalized attendance month as a draft')) {
+      return;
+    }
+    if (!window.confirm(`Reopen ${attendanceMeta.year}-${String(attendanceMeta.month).padStart(2, '0')} final attendance as a draft? The finalized copy will be replaced by an editable draft.`)) {
+      return;
+    }
+
+    try {
+      setIsReopeningFinal(true);
+      const response = await fetch(`${ATTENDANCE_API_BASE}/reopen/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: attendanceMeta.year, month: attendanceMeta.month }),
+      });
+      const data = (await response.json()) as SavedAttendanceResponse;
+      if (!response.ok) {
+        showErrorPopup(getErrorMessage(data) || 'Failed to reopen finalized attendance.');
+        return;
+      }
+
+      const reopenedMeta = buildAttendanceMeta(data, 'draft');
+      applyAttendanceState(reopenedMeta, mapSavedEmployees(data));
+      setOvertimeDecisions(savedOvertimeDecisions);
+      setHasLocalDraftChanges(false);
+      setParseWarnings([]);
+      setParsedSourceFiles([]);
+      setActivePopup(null);
+      setActiveOvertimePopup(null);
+      void fetchAttendanceHistory();
+    } catch {
+      showErrorPopup('Failed to reopen finalized attendance.');
+    } finally {
+      setIsReopeningFinal(false);
     }
   };
 
@@ -2101,7 +2379,7 @@ export default function EmployeePayrollPage() {
     });
   }, []);
 
-  const saveOvertimeDecision = useCallback(async (mode: 'approved' | 'denied' | 'partially_approved') => {
+  const saveOvertimeDecision = useCallback((mode: 'approved' | 'denied' | 'partially_approved') => {
     if (!activeOvertimePopup) {
       return;
     }
@@ -2123,40 +2401,52 @@ export default function EmployeePayrollPage() {
       segments = builtSegments;
     }
 
-    try {
-      setIsSavingOvertime(true);
-      const response = await fetch(`${OVERTIME_API_BASE}/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: candidate.decision?.id,
-          employee: candidate.employeeId,
-          attendance_date: candidate.attendanceDate,
-          attendance_shift: candidate.shiftKey,
-          roster_start_time: candidate.rosterStartTime,
-          roster_end_time: candidate.rosterEndTime,
-          actual_checkout_time: candidate.actualCheckoutTime,
-          status: mode,
-          decision_reason: trimmedReason,
-          narrowed_decision_enabled: mode === 'partially_approved',
-          segments,
-        }),
+    const nextDecision: OvertimeDecision = {
+      id: candidate.decision?.id,
+      employee: candidate.employeeId,
+      employee_name: candidate.employeeName,
+      worker_id: candidate.workerId,
+      attendance_date: candidate.attendanceDate,
+      attendance_shift: candidate.shiftKey,
+      roster_start_time: candidate.rosterStartTime,
+      roster_end_time: candidate.rosterEndTime,
+      actual_checkout_time: candidate.actualCheckoutTime,
+      potential_ot_minutes: candidate.potentialMinutes,
+      approved_ot_minutes: mode === 'approved'
+        ? candidate.potentialMinutes
+        : mode === 'partially_approved'
+          ? segments?.filter((segment) => segment.status === 'approved').reduce((total, segment) => total + (segment.segment_minutes || 0), 0) || 0
+          : 0,
+      denied_ot_minutes: mode === 'denied'
+        ? candidate.potentialMinutes
+        : mode === 'partially_approved'
+          ? segments?.filter((segment) => segment.status === 'denied').reduce((total, segment) => total + (segment.segment_minutes || 0), 0) || 0
+          : 0,
+      status: mode,
+      decision_reason: trimmedReason,
+      narrowed_decision_enabled: mode === 'partially_approved',
+      segments: mode === 'partially_approved' ? segments : [],
+    };
+
+    startTransition(() => {
+      setOvertimeDecisions((previous) => {
+        const nextMap = new Map<string, OvertimeDecision>();
+        previous.forEach((decision) => {
+          nextMap.set(buildOvertimeDecisionKey(decision.employee, decision.attendance_date, decision.attendance_shift), decision);
+        });
+        nextMap.set(
+          buildOvertimeDecisionKey(nextDecision.employee, nextDecision.attendance_date, nextDecision.attendance_shift),
+          nextDecision,
+        );
+        return sortOvertimeDecisions(Array.from(nextMap.values()));
       });
-      const data = await response.json();
-      if (!response.ok) {
-        showErrorPopup(getErrorMessage(data) || 'Failed to save overtime decision.');
-        return;
-      }
+    });
 
-      await fetchOvertimeDecisions(activeYear, activeMonth, true);
-      setActiveOvertimePopup(null);
-    } catch {
-      showErrorPopup('Failed to save overtime decision.');
-    } finally {
-      setIsSavingOvertime(false);
-    }
-  }, [activeMonth, activeOvertimePopup, activeYear, fetchOvertimeDecisions, showErrorPopup]);
+    setHasLocalDraftChanges(true);
+    setActiveOvertimePopup(null);
+  }, [activeOvertimePopup, showErrorPopup]);
 
+  /** Helper used by this module to manage toggle edit mode. */
   const toggleEditMode = () => {
     if (editMode) {
       setEditMode(false);
@@ -2253,6 +2543,7 @@ export default function EmployeePayrollPage() {
       });
     });
 
+    setHasLocalDraftChanges(true);
     setActivePopup(null);
   }, [activePopup, showErrorPopup]);
 
@@ -2383,6 +2674,16 @@ export default function EmployeePayrollPage() {
             >
               {isSavingFinal ? 'Saving Final...' : 'Save Final'}
             </button>
+            {attendanceMeta?.status === 'final' ? (
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => void reopenFinalAsDraft()}
+                disabled={isReopeningFinal}
+              >
+                {isReopeningFinal ? 'Reopening...' : 'Reopen as Draft'}
+              </button>
+            ) : null}
           </div>
           <div className="payroll-history-panel" style={{ marginTop: '1.2rem' }}>
             <div className="payroll-history-header">
@@ -2467,7 +2768,7 @@ export default function EmployeePayrollPage() {
                 </p>
               )}
               <p className="muted" style={{ marginTop: '0.4rem' }}>
-                Active workers shown: {employees.length}
+                Active workers shown: {employees.length}/{employeeDirectory.length || employees.length}
               </p>
               <p className="muted" style={{ marginTop: '0.4rem' }}>
                 Leave records this month: {leaveRecords.length}
@@ -2478,10 +2779,19 @@ export default function EmployeePayrollPage() {
               <p className="muted" style={{ marginTop: '0.4rem' }}>
                 {isLoadingOvertime ? 'Refreshing overtime decisions...' : `OT review items: ${overtimeCandidates.length}`}
               </p>
-              {hasUnresolved ? (
-                <p style={{ color: '#d97962', marginTop: '0.4rem' }}>
-                  Unresolved attendance, leave, paid-rest, or overtime decisions remain.
-                </p>
+              {hasFinalSaveBlockers ? (
+                <>
+                  {hasMissingActiveAttendanceCoverage ? (
+                    <p style={{ color: '#d97962', marginTop: '0.4rem' }}>
+                      Final save blocked: active employees are missing from this month. {missingActiveAttendanceLabel}
+                    </p>
+                  ) : null}
+                  {hasUnresolved ? (
+                    <p style={{ color: '#d97962', marginTop: '0.4rem' }}>
+                      Unresolved attendance, leave, paid-rest, or overtime decisions remain.
+                    </p>
+                  ) : null}
+                </>
               ) : (
                 <p style={{ color: '#4bbf8e', marginTop: '0.4rem' }}>Ready for final save.</p>
               )}
@@ -3061,6 +3371,9 @@ export default function EmployeePayrollPage() {
               <div className="payroll-raw-log-copy">
                 {activeOvertimePopup.candidate.rosterEndTime} - {activeOvertimePopup.candidate.actualCheckoutTime}
               </div>
+              <div className="payroll-raw-log-copy" style={{ marginTop: '0.45rem' }}>
+                Decisions stay local until you save a draft or final attendance record.
+              </div>
             </div>
 
             <label className="payroll-inline-toggle">
@@ -3101,7 +3414,7 @@ export default function EmployeePayrollPage() {
               <button
                 type="button"
                 className="btn btn-outline"
-                onClick={() => void saveOvertimeDecision('denied')}
+                onClick={() => saveOvertimeDecision('denied')}
                 disabled={isSavingOvertime}
               >
                 {isSavingOvertime ? 'Saving...' : 'Deny Block'}
@@ -3109,7 +3422,7 @@ export default function EmployeePayrollPage() {
               <button
                 type="button"
                 className="btn btn-outline"
-                onClick={() => void saveOvertimeDecision('approved')}
+                onClick={() => saveOvertimeDecision('approved')}
                 disabled={isSavingOvertime}
               >
                 Approve All
@@ -3118,7 +3431,7 @@ export default function EmployeePayrollPage() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => void saveOvertimeDecision('partially_approved')}
+                  onClick={() => saveOvertimeDecision('partially_approved')}
                   disabled={isSavingOvertime}
                 >
                   Save Narrowed Decision

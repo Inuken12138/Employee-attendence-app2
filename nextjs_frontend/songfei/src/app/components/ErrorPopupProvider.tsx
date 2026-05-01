@@ -1,8 +1,22 @@
 'use client';
 
+/**
+ * Shared application UI component.
+ *
+ * This file contains reusable presentation logic that is consumed by multiple storefront or ERP routes.
+ */
+
+/**
+ * Owns the application's global error popup state and browser-level listeners.
+ *
+ * This is the central place where unexpected errors are turned into a reusable
+ * modal, which keeps error UX consistent across pages and components.
+ */
+
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorPopup from './ErrorPopup';
 
+/** The values exposed to any component that wants to open or close the error popup. */
 export interface ErrorPopupContextValue {
   errorMessage: string | null;
   showErrorPopup: (message: string) => void;
@@ -11,13 +25,16 @@ export interface ErrorPopupContextValue {
 
 export const ErrorPopupContext = createContext<ErrorPopupContextValue | undefined>(undefined);
 
+/** Provides error popup state to the app and listens for uncaught browser errors. */
 export default function ErrorPopupProvider({ children }: { children: React.ReactNode }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  /** Opens the popup with a new error message. */
   const showErrorPopup = useCallback((message: string) => {
     setErrorMessage(message);
   }, []);
 
+  /** Clears the current error and hides the popup. */
   const closeErrorPopup = useCallback(() => {
     setErrorMessage(null);
   }, []);

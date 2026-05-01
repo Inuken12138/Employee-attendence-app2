@@ -1,10 +1,9 @@
-"""
-ASGI config for django_backend project.
+"""ASGI entry point for async-capable Django deployments.
 
-It exposes the ASGI callable as a module-level variable named `application`.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/3.2/howto/deployment/asgi/
+If this backend is served by an ASGI server such as Uvicorn or Daphne, that
+server imports ``application`` from this module. In development the team mostly
+uses ``runserver``, but this file is still part of the production/deployment
+surface and is useful to know during onboarding.
 """
 
 import os

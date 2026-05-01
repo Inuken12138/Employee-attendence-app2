@@ -1,7 +1,13 @@
+/**
+ * Editor-side kitchen designer component.
+ *
+ * Files in this folder render the planner workspace controls that let users inspect, edit, and price a room design.
+ */
 import { usePlannerStore } from '../state/plannerStore';
 
 const movementStepMm = 50;
 
+/** Renders the toolbar component used by this module. */
 export default function Toolbar() {
   const nudgeSelectedNode = usePlannerStore((state) => state.nudgeSelectedNode);
 

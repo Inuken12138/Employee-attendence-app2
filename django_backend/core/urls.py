@@ -36,12 +36,36 @@ Current Implementation
    - /logout/ - User logout
    - /api-token-auth/ - Token authentication
    - /login/ - User login
+
+# AI explanation  
+Root URL router for the Django backend.
+
+Think of this file as the front desk for the whole backend. It decides which
+app should handle a request based on the top-level path prefix:
+
+- ``/admin/`` goes to Django's admin site
+- ``/api/`` goes to the broad ERP/storefront API in ``core``
+- ``/api/cart/`` goes to cart-specific endpoints in ``commerce``
+- ``/api/planner/`` goes to the kitchen planner app
+
+That split is useful during onboarding because it shows where to look when a
+frontend page calls a specific backend URL.
+
+API routing for the main ``core`` application.
+
+This file exposes the broadest part of the backend surface. It mixes DRF
+ViewSet routes for simple CRUD resources with explicit ``path(...)`` entries
+for larger attendance, payroll, construction, and face-verification workflows.
+
+For a new developer, this module is the quickest map of which URLs are handled
+inside ``core.views`` versus ``core.payroll_views``.   
 """
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import DepartmentViewSet, EmployeeViewSet, InventoryItemViewSet, ProductViewSet, UserViewSet, RegisterView, LogoutView, LoginView, AttendanceRecordsParseView, AttendanceRecordsSaveView, AttendanceRecordsSaveDraftView, AttendanceRecordsFetchView, AttendanceRecordsDraftFetchView, AttendanceRecordsHistoryView, PayrollLeaveRecordsView, PayrollLeaveRecordDetailView, PayrollLeaveRecordSubmitView, PayrollLeaveRecordApproveView, PayrollLeaveRecordRejectView, PayrollLeaveRecordRecordUnapprovedView, PayrollOvertimeDecisionsView, PayrollOvertimeDecisionDetailView, PayrollAttendanceResolutionsView, PayrollAttendanceResolutionDetailView, PayrollAttendanceResolutionApproveView, PayrollAttendanceResolutionPartialApproveView, PayrollAttendanceResolutionDenyView, WorkplaceViewSet, FaceEnrollView, FaceVerifyView, CategoryViewSet, ReviewViewSet, RosterTemplateViewSet
-from .payroll_views import PayrollPoliciesView, PayrollPolicyActiveView, PayrollPolicyDetailView, PayrollPolicyActivateView, PayrollPolicyArchiveView, PayrollPolicyCloneView, PayrollCompensationProfilesView, PayrollCompensationProfileDetailView, PayrollPaidRestRequestsView, PayrollPaidRestRequestDetailView, PayrollPaidRestRequestSubmitView, PayrollPaidRestRequestApproveView, PayrollPaidRestRequestRejectView, PayrollPaidRestBalancesView, PayrollAttendanceSummariesView, PayrollMonthlySummariesView, PayrollAdjustmentsView, PayrollAdjustmentDetailView, PayrollAdjustmentApproveView, ConstructionProjectsView, ConstructionProjectDetailView, ConstructionProjectAssignmentsView, ConstructionProjectAssignmentDetailView, ConstructionProjectWorkLogsView, ConstructionProjectWorkLogDetailView, ConstructionProjectSettleView, PayrollRunGenerateView, PayrollRunsView, PayrollRunDetailView, PayrollRunApproveView, PayrollRunLockView, PayrollRunCreateCorrectionView, PayrollRunDeltasView, PayrollRunReportsView, PayrollCarryForwardBalancesView, PayrollEmployeeReportPreviewView, PayrollWorkforceReportPreviewView, PayrollReportsGenerateView
+from .views import AttendanceRecordsReopenView
+from .payroll_views import PayrollPoliciesView, PayrollPolicyActiveView, PayrollPolicyDetailView, PayrollPolicyActivateView, PayrollPolicyArchiveView, PayrollPolicyCloneView, PayrollCompensationProfilesView, PayrollCompensationProfileDetailView, PayrollAttendanceWorkRuleProfilesView, PayrollAttendanceWorkRuleProfileDetailView, PayrollAttendanceTimeBankEntriesView, PayrollPaidRestRequestsView, PayrollPaidRestRequestDetailView, PayrollPaidRestRequestSubmitView, PayrollPaidRestRequestApproveView, PayrollPaidRestRequestRejectView, PayrollPaidRestBalancesView, PayrollAttendanceSummariesView, PayrollMonthlySummariesView, PayrollAdjustmentsView, PayrollAdjustmentDetailView, PayrollAdjustmentApproveView, ConstructionProjectsView, ConstructionProjectDetailView, ConstructionProjectAssignmentsView, ConstructionProjectAssignmentDetailView, ConstructionProjectWorkLogsView, ConstructionProjectWorkLogDetailView, ConstructionProjectSettleView, PayrollRunGenerateView, PayrollRunsView, PayrollRunDetailView, PayrollRunApproveView, PayrollRunLockView, PayrollRunCreateCorrectionView, PayrollRunDeltasView, PayrollRunReportsView, PayrollCarryForwardBalancesView, PayrollEmployeeReportPreviewView, PayrollWorkforceReportPreviewView, PayrollReportsGenerateView
 from rest_framework.authtoken.views import obtain_auth_token
 
 import logging
@@ -53,14 +77,10 @@ logger.debug("Registering EmployeeViewSet at /employees/")
 router.register(r'employees', EmployeeViewSet)
 router.register(r'departments', DepartmentViewSet)
 router.register(r'roster-templates', RosterTemplateViewSet)
-print("Debug: Registering InventoryItemViewSet at /inventory/")  # Debug print
 router.register(r'inventory', InventoryItemViewSet)
-print("Debug: Registering ProductViewSet at /products/")  # Debug print
 router.register(r'products', ProductViewSet)
-print("Debug: Registering CategoryViewSet at /categories/")  # Debug print
 router.register(r'categories', CategoryViewSet)
 router.register(r'reviews', ReviewViewSet)
-print("Debug: Registering UserViewSet at /users/")  # Debug print
 router.register(r'users', UserViewSet)
 router.register(r'workplaces', WorkplaceViewSet)
 
@@ -73,6 +93,7 @@ urlpatterns = [
    path('payroll/attendance-records/parse/', AttendanceRecordsParseView.as_view(), name='attendance-records-parse'),
    path('payroll/attendance-records/save/', AttendanceRecordsSaveView.as_view(), name='attendance-records-save'),
    path('payroll/attendance-records/save-draft/', AttendanceRecordsSaveDraftView.as_view(), name='attendance-records-save-draft'),
+      path('payroll/attendance-records/reopen/', AttendanceRecordsReopenView.as_view(), name='attendance-records-reopen'),
    path('payroll/attendance-records/history/', AttendanceRecordsHistoryView.as_view(), name='attendance-records-history'),
    path('payroll/attendance-records/', AttendanceRecordsFetchView.as_view(), name='attendance-records-fetch'),
    path('payroll/attendance-records/drafts/', AttendanceRecordsDraftFetchView.as_view(), name='attendance-records-draft-fetch'),
@@ -97,6 +118,9 @@ urlpatterns = [
    path('payroll/policies/<int:pk>/clone/', PayrollPolicyCloneView.as_view(), name='payroll-policy-clone'),
    path('payroll/compensation-profiles/', PayrollCompensationProfilesView.as_view(), name='payroll-compensation-profiles'),
    path('payroll/compensation-profiles/<int:pk>/', PayrollCompensationProfileDetailView.as_view(), name='payroll-compensation-profile-detail'),
+   path('payroll/attendance-work-rule-profiles/', PayrollAttendanceWorkRuleProfilesView.as_view(), name='payroll-attendance-work-rule-profiles'),
+   path('payroll/attendance-work-rule-profiles/<int:pk>/', PayrollAttendanceWorkRuleProfileDetailView.as_view(), name='payroll-attendance-work-rule-profile-detail'),
+   path('payroll/time-bank-entries/', PayrollAttendanceTimeBankEntriesView.as_view(), name='payroll-time-bank-entries'),
    path('payroll/paid-rest/', PayrollPaidRestRequestsView.as_view(), name='payroll-paid-rest'),
    path('payroll/paid-rest/<int:pk>/', PayrollPaidRestRequestDetailView.as_view(), name='payroll-paid-rest-detail'),
    path('payroll/paid-rest/<int:pk>/submit/', PayrollPaidRestRequestSubmitView.as_view(), name='payroll-paid-rest-submit'),

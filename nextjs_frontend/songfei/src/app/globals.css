@@ -1,3 +1,9 @@
+/*
+ * Defines the shared visual foundation for the frontend.
+ *
+ * This stylesheet sets the theme tokens, layout primitives, and reusable UI
+ * classes that both the storefront and ERP screens rely on.
+ */
 @import "tailwindcss";
 
 :root {

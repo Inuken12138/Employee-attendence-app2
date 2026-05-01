@@ -1,3 +1,5 @@
+"""Update attendance-shift status choices to support paid-rest overlays."""
+
 from django.db import migrations, models
 
 

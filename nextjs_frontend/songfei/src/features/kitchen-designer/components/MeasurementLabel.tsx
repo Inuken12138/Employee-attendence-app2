@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Reusable kitchen designer UI component.
+ *
+ * These components support the planner flow with review widgets, subheaders, drawers, and guided controls.
+ */
+
 import { useEffect, useState } from 'react';
 
 import { formatMillimeters, parseMeasurementInput } from '../lib/measurementMath';
@@ -16,6 +22,7 @@ interface MeasurementLabelProps {
   onCancel: () => void;
 }
 
+/** Renders the measurement label component used by this module. */
 export default function MeasurementLabel({
   x,
   y,
@@ -34,6 +41,7 @@ export default function MeasurementLabel({
     }
   }, [editing, valueMm]);
 
+  /** Helper used by this module to manage commit. */
   const commit = () => {
     const parsedValue = parseMeasurementInput(draftValue);
 

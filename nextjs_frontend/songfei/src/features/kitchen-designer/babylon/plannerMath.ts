@@ -1,3 +1,8 @@
+/**
+ * Babylon-based runtime helper for the kitchen designer.
+ *
+ * This file contains rendering or math glue that powers the richer interactive planner experience.
+ */
 import type { PlannerNode, PlannerRoom } from '../types/planner';
 
 export const MM_TO_SCENE = 0.001;
@@ -32,18 +37,22 @@ interface Bounds3d {
   maxZ: number;
 }
 
+/** Clamps the  so it stays within allowed limits. */
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Returns the overlap for the current input. */
 function getOverlap(minA: number, maxA: number, minB: number, maxB: number) {
   return Math.min(maxA, maxB) - Math.max(minA, minB);
 }
 
+/** Helper used by this module to manage snap mm. */
 export function snapMm(value: number) {
   return Math.round(value / SNAP_MM) * SNAP_MM;
 }
 
+/** Normalizes the rotation into the shape expected by this module. */
 export function normalizeRotation(angle: number) {
   const fullTurn = Math.PI * 2;
   let next = angle % fullTurn;
@@ -55,6 +64,7 @@ export function normalizeRotation(angle: number) {
   return next;
 }
 
+/** Helper used by this module to manage snap rotation. */
 export function snapRotation(angle: number) {
   const normalized = normalizeRotation(angle);
   let best = normalized;
@@ -73,13 +83,18 @@ export function snapRotation(angle: number) {
   return bestDistance <= CARDINAL_ROTATION_THRESHOLD ? best : normalized;
 }
 
+/** Returns whether wall mounted. */
 export function isWallMounted(node: PlannerNode) {
   return Boolean(node.allowVerticalMovement) || node.plannerRole === 'wall';
 }
 
+/** Returns the camera frame for the current input. */
 export function getCameraFrame(room?: PlannerRoom, compact = false): CameraFrame {
+  /** Helper used by this module to manage width. */
   const width = (room?.widthMm ?? 4000) * MM_TO_SCENE;
+  /** Helper used by this module to manage depth. */
   const depth = (room?.depthMm ?? 4000) * MM_TO_SCENE;
+  /** Helper used by this module to manage height. */
   const height = (room?.heightMm ?? 2500) * MM_TO_SCENE;
   const footprint = Math.max(width, depth);
   const distance = compact ? footprint * 1.05 : footprint * 0.94;
@@ -104,6 +119,7 @@ export function getCameraFrame(room?: PlannerRoom, compact = false): CameraFrame
   };
 }
 
+/** Returns the rotated footprint for the current input. */
 export function getRotatedFootprint(node: PlannerNode, rotationY: number) {
   const normalizedRotation = normalizeRotation(rotationY);
   const cos = Math.cos(normalizedRotation);
@@ -115,10 +131,12 @@ export function getRotatedFootprint(node: PlannerNode, rotationY: number) {
   };
 }
 
+/** Clamps the vertical position so it stays within allowed limits. */
 export function clampVerticalPosition(node: PlannerNode, room: PlannerRoom, y: number) {
   return clamp(y, node.heightMm / 2, room.heightMm - node.heightMm / 2);
 }
 
+/** Clamps the position to room so it stays within allowed limits. */
 export function clampPositionToRoom(
   node: PlannerNode,
   room: PlannerRoom,
@@ -134,6 +152,7 @@ export function clampPositionToRoom(
   };
 }
 
+/** Returns the node bounds for the current input. */
 function getNodeBounds(node: PlannerNode, position: { x: number; y: number; z: number }, rotationY: number): Bounds3d {
   const footprint = getRotatedFootprint(node, rotationY);
 
@@ -147,6 +166,7 @@ function getNodeBounds(node: PlannerNode, position: { x: number; y: number; z: n
   };
 }
 
+/** Returns the wall snap candidate for the current input. */
 export function getWallSnapCandidate(
   node: PlannerNode,
   room: PlannerRoom,
@@ -212,6 +232,7 @@ export function getWallSnapCandidate(
   return bestCandidate;
 }
 
+/** Returns the object snap candidate for the current input. */
 export function getObjectSnapCandidate(
   node: PlannerNode,
   nodes: PlannerNode[],
@@ -277,6 +298,7 @@ export function getObjectSnapCandidate(
   return bestCandidate;
 }
 
+/** Helper used by this module to manage collides with nodes. */
 export function collidesWithNodes(
   node: PlannerNode,
   nodes: PlannerNode[],
@@ -302,6 +324,7 @@ export function collidesWithNodes(
   });
 }
 
+/** Resolves the node placement from the available inputs. */
 export function resolveNodePlacement(
   node: PlannerNode,
   nodes: PlannerNode[],

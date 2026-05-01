@@ -1,3 +1,11 @@
+"""HTTP API for planner product setup, project persistence, and review flows.
+
+This module is the main request/response surface of the planner app. It covers
+ERP product preparation, the published planner catalog, customer project saves,
+validation runs, project sharing, duplication, and the conversion of a project
+into locked cart lines.
+"""
+
 from django.shortcuts import get_object_or_404
 from django.db.models import Max
 from copy import deepcopy
@@ -34,20 +42,28 @@ from planner.taxonomy import planner_path_is_complete
 
 
 class PlannerProductProfileDetailView(APIView):
+    """Read and update the planner profile attached to a catalog product."""
+
     permission_classes = [permissions.AllowAny]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def _get_profile(self, product_id):
+        """Return the existing planner profile for a product or create a blank one."""
+
         product = get_object_or_404(Product, pk=product_id)
         profile, _ = KitchenDesignerProductProfile.objects.get_or_create(product=product)
         return profile
 
     def get(self, request, product_id):
+        """Fetch the planner profile so ERP screens can render the current settings."""
+
         profile = self._get_profile(product_id)
         serializer = KitchenDesignerProductProfileSerializer(profile, context={'request': request})
         return Response(serializer.data)
 
     def patch(self, request, product_id):
+        """Partially update planner metadata, asset references, and schemas."""
+
         profile = self._get_profile(product_id)
         serializer = KitchenDesignerProductProfileSerializer(
             profile,
@@ -61,9 +77,13 @@ class PlannerProductProfileDetailView(APIView):
 
 
 class PlannerProductAssetValidateView(APIView):
+    """Run planner asset validation for one product profile."""
+
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, product_id):
+        """Validate the profile and return the persisted validation result."""
+
         product = get_object_or_404(Product, pk=product_id)
         profile, _ = KitchenDesignerProductProfile.objects.get_or_create(product=product)
         validation = validate_designer_profile(
@@ -75,21 +95,31 @@ class PlannerProductAssetValidateView(APIView):
 
 
 class PlannerProductCatalogStateView(APIView):
+    """Move planner products through staging, publishing, and unpublishing."""
+
     permission_classes = [permissions.AllowAny]
 
     def _get_profile(self, product_id):
+        """Load or create the planner profile for the requested product."""
+
         product = get_object_or_404(Product, pk=product_id)
         profile, _ = KitchenDesignerProductProfile.objects.get_or_create(product=product)
         return profile
 
     def _serialize_profile(self, request, profile):
+        """Return the standard serialized profile payload used by this view."""
+
         return KitchenDesignerProductProfileSerializer(profile, context={'request': request}).data
 
     def _latest_validation_passed(self, profile):
+        """Check whether the most recent asset validation succeeded."""
+
         latest = profile.asset_validations.order_by('-validated_at').first()
         return latest and latest.status == 'passed'
 
     def post(self, request, product_id, action):
+        """Handle the requested catalog-state transition after business checks."""
+
         profile = self._get_profile(product_id)
 
         if action == 'stage':
@@ -142,20 +172,28 @@ class PlannerProductCatalogStateView(APIView):
 
 
 class PlannerProductProductionAssetListCreateView(APIView):
+    """List and upload manufacturing assets for a planner profile."""
+
     permission_classes = [permissions.AllowAny]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def _get_profile(self, product_id):
+        """Load or create the planner profile whose assets are being managed."""
+
         product = get_object_or_404(Product, pk=product_id)
         profile, _ = KitchenDesignerProductProfile.objects.get_or_create(product=product)
         return profile
 
     def get(self, request, product_id):
+        """Return every production asset currently attached to the profile."""
+
         profile = self._get_profile(product_id)
         serializer = KitchenProductionAssetSerializer(profile.production_assets.all(), many=True, context={'request': request})
         return Response(serializer.data)
 
     def post(self, request, product_id):
+        """Validate and attach a new production asset to the planner profile."""
+
         profile = self._get_profile(product_id)
         serializer = KitchenProductionAssetSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
@@ -167,9 +205,13 @@ class PlannerProductProductionAssetListCreateView(APIView):
 
 
 class PlannerProductionAssetDetailView(APIView):
+    """Delete a single production asset by id."""
+
     permission_classes = [permissions.AllowAny]
 
     def delete(self, request, asset_id):
+        """Remove the asset and update the profile flag when none remain."""
+
         asset = get_object_or_404(KitchenProductionAsset, pk=asset_id)
         profile = asset.designer_profile
         asset.delete()
@@ -180,9 +222,13 @@ class PlannerProductionAssetDetailView(APIView):
 
 
 class PlannerCatalogProductListView(APIView):
+    """Return the published planner catalog visible inside the designer UI."""
+
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
+        """List published planner products with optional taxonomy filtering."""
+
         queryset = Product.objects.select_related('kitchen_designer_profile').filter(
             kitchen_designer_profile__is_enabled=True,
             kitchen_designer_profile__catalog_state=KitchenDesignerProductProfile.CatalogState.PUBLISHED,
@@ -204,9 +250,13 @@ class PlannerCatalogProductListView(APIView):
 
 
 class PlannerCatalogProductDetailView(APIView):
+    """Return one published planner catalog product."""
+
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, product_id):
+        """Fetch a single published planner product by primary key."""
+
         product = get_object_or_404(
             Product.objects.select_related('kitchen_designer_profile').filter(
                 kitchen_designer_profile__is_enabled=True,
@@ -219,14 +269,20 @@ class PlannerCatalogProductDetailView(APIView):
 
 
 class PlannerProjectListCreateView(APIView):
+    """List the current user's projects or create a new project with version 1."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """Return the authenticated user's planner projects."""
+
         projects = KitchenProject.objects.filter(owner=request.user).select_related('current_version').order_by('-updated_at', '-created_at')
         serializer = KitchenProjectSerializer(projects, many=True)
         return Response(serializer.data)
 
     def post(self, request):
+        """Create a project and immediately persist its initial scene snapshot."""
+
         project_data = {
             'title': request.data.get('title'),
             'status': request.data.get('status'),
@@ -267,17 +323,25 @@ class PlannerProjectListCreateView(APIView):
 
 
 class PlannerProjectDetailView(APIView):
+    """Read or partially update a single project owned by the current user."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def _get_project(self, request, project_slug):
+        """Fetch one project and ensure the requester owns it."""
+
         return get_object_or_404(KitchenProject.objects.select_related('current_version'), slug=project_slug, owner=request.user)
 
     def get(self, request, project_slug):
+        """Return the project's current state and active version metadata."""
+
         project = self._get_project(request, project_slug)
         serializer = KitchenProjectSerializer(project)
         return Response(serializer.data)
 
     def patch(self, request, project_slug):
+        """Update editable project metadata such as title or share mode."""
+
         project = self._get_project(request, project_slug)
         serializer = KitchenProjectSerializer(project, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -289,18 +353,26 @@ class PlannerProjectDetailView(APIView):
 
 
 class PlannerProjectVersionListCreateView(APIView):
+    """List all project versions or create a new saved snapshot."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def _get_project(self, request, project_slug):
+        """Fetch one owned project together with its current version."""
+
         return get_object_or_404(KitchenProject.objects.select_related('current_version'), slug=project_slug, owner=request.user)
 
     def get(self, request, project_slug):
+        """Return the full saved-version history for the project."""
+
         project = self._get_project(request, project_slug)
         versions = project.versions.select_related('created_by', 'source_version').order_by('-version_number', '-created_at')
         serializer = KitchenProjectVersionSerializer(versions, many=True)
         return Response(serializer.data)
 
     def post(self, request, project_slug):
+        """Create the next numbered project version and make it current."""
+
         project = self._get_project(request, project_slug)
         next_version_number = (project.versions.aggregate(max_version=Max('version_number'))['max_version'] or 0) + 1
 
@@ -344,9 +416,13 @@ class PlannerProjectVersionListCreateView(APIView):
 
 
 class PlannerProjectValidationView(APIView):
+    """Run scene validation for the current version of a project."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, project_slug):
+        """Validate the current version and return project plus validation payloads."""
+
         project = get_object_or_404(KitchenProject.objects.select_related('current_version'), slug=project_slug, owner=request.user)
         if not project.current_version:
             return Response({'detail': 'Project has no saved version to validate yet.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -362,9 +438,13 @@ class PlannerProjectValidationView(APIView):
 
 
 class PlannerProjectReviewView(APIView):
+    """Return the project review payload used before add-to-bag or checkout."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, project_slug):
+        """Combine project data, latest validation, and BOM summary in one response."""
+
         project = get_object_or_404(KitchenProject.objects.select_related('current_version'), slug=project_slug, owner=request.user)
         if not project.current_version:
             return Response({'detail': 'Project has no saved version to review yet.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -389,9 +469,13 @@ class PlannerProjectReviewView(APIView):
 
 
 class PlannerProjectAddToBagView(APIView):
+    """Convert a validated planner project into locked cart items."""
+
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, project_slug):
+        """Validate the project, replace older bundles, and add a fresh bundle to cart."""
+
         if not request.user.is_authenticated:
             return Response(
                 {
@@ -476,9 +560,13 @@ class PlannerProjectAddToBagView(APIView):
 
 
 class PlannerProjectShareLinkView(APIView):
+    """Enable link sharing for a project and return the share token."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, project_slug):
+        """Switch the project to share-link mode and expose the public path."""
+
         project = get_object_or_404(KitchenProject, slug=project_slug, owner=request.user)
         project.share_mode = KitchenProject.ShareMode.VIEW_LINK
         project.ensure_share_token()
@@ -493,9 +581,13 @@ class PlannerProjectShareLinkView(APIView):
 
 
 class PlannerSharedProjectView(APIView):
+    """Public read-only endpoint for a project shared by token."""
+
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, share_token):
+        """Return the shared project, its current version, and latest validation."""
+
         project = get_object_or_404(
             KitchenProject.objects.select_related('current_version', 'owner'),
             share_token=share_token,
@@ -512,9 +604,13 @@ class PlannerSharedProjectView(APIView):
 
 
 class PlannerProjectDuplicateView(APIView):
+    """Copy an existing project into a new project owned by the requester."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, project_slug):
+        """Duplicate the source project snapshot and record an audit trail."""
+
         source_project = get_object_or_404(KitchenProject.objects.select_related('current_version'), slug=project_slug)
 
         if source_project.owner != request.user and source_project.share_mode != KitchenProject.ShareMode.VIEW_LINK:

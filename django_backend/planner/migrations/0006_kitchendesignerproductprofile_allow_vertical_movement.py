@@ -1,3 +1,5 @@
+"""Add vertical-movement support to planner product profiles."""
+
 from django.db import migrations, models
 
 

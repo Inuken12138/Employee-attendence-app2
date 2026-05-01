@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /cat/[slug] route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
@@ -30,6 +36,7 @@ interface Product {
   ratingCount?: number | null;
 }
 
+/** Renders the category page. */
 export default function CategoryPage() {
   const params = useParams();
   const slug = params.slug as string;

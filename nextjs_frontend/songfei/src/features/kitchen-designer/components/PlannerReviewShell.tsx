@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Reusable kitchen designer UI component.
+ *
+ * These components support the planner flow with review widgets, subheaders, drawers, and guided controls.
+ */
+
 import Link from 'next/link';
 
 import { formatMillimeters } from '../lib/measurementMath';
@@ -14,6 +20,7 @@ interface PlannerReviewShellProps {
   isPersistedProject: boolean;
 }
 
+/** Renders the planner review shell component used by this module. */
 export default function PlannerReviewShell({
   projectId,
   room,

@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * Defines the Next.js page module for the /kitchen-designer/share/[token] route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -9,6 +15,7 @@ import { buildLoginRedirectUrl, hasAuthToken } from '@/lib/auth';
 import { duplicatePlannerProject, fetchSharedPlannerProject } from '@/features/kitchen-designer/api/plannerApi';
 import type { PlannerSharedProjectResponse } from '@/features/kitchen-designer/types/planner';
 
+/** Renders the shared kitchen project page. */
 export default function SharedKitchenProjectPage() {
   const params = useParams();
   const router = useRouter();
@@ -40,6 +47,7 @@ export default function SharedKitchenProjectPage() {
     void loadSharedProject();
   }, [showErrorPopup, token]);
 
+  /** Handles the duplicate interaction for this component. */
   const handleDuplicate = async () => {
     if (!sharedProject) {
       return;

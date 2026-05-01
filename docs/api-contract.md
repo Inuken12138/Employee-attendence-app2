@@ -24,7 +24,9 @@ All endpoints below are prefixed with `/api/` unless noted.
 - PUT/PATCH `/api/employees/{id}/`
 - DELETE `/api/employees/{id}/`
 
-Employee fields include `name`, `base_salary`, `worker_id`, `is_active`.
+Employee fields include `name`, `worker_id`, `department`, `is_active`, and `base_salary`.
+
+`base_salary` is now a read-only convenience field that returns the current monthly salary from the employee's active compensation profile as of today. Payroll source-of-truth data lives in compensation profiles, not in the employee record.
 
 ## Inventory
 - GET `/api/inventory/`

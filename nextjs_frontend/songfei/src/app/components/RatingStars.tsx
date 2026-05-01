@@ -1,3 +1,10 @@
+/**
+ * Displays a read-only star rating for product reviews.
+ *
+ * The component converts a numeric rating into a partially filled five-star bar
+ * and can optionally show how many reviews produced that score.
+ */
+
 import React from 'react';
 
 interface RatingStarsProps {
@@ -7,8 +14,10 @@ interface RatingStarsProps {
   showCount?: boolean;
 }
 
+/** Converts a numeric rating into the visual star strip used on product cards and detail pages. */
 export default function RatingStars({ rating, count, size = 14, showCount = true }: RatingStarsProps) {
   const safeRating = Math.max(0, Math.min(5, rating ?? 0));
+  /** Helper used by this module to manage percent. */
   const percent = (safeRating / 5) * 100;
 
   return (

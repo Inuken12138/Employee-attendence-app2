@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""Bulk-import helper for seeding trial payroll data through the live API.
+
+Instead of writing directly to the database, this script reuses the backend's
+public API endpoints. That keeps trial-run imports aligned with the same
+validation rules the frontend uses in production.
+"""
 
 from __future__ import annotations
 
@@ -17,15 +23,21 @@ DEFAULT_INPUT_DIR = ROOT_DIR / 'docs' / 'trial-run-bulk-import'
 
 
 def normalize_text(value: Any) -> str:
+    """Trim arbitrary input into a normalized string value."""
+
     return str(value or '').strip()
 
 
 def optional_text(value: Any) -> str | None:
+    """Return a stripped string or ``None`` when the input is empty."""
+
     normalized = normalize_text(value)
     return normalized or None
 
 
 def parse_bool(value: Any, default: bool = False) -> bool:
+    """Parse common spreadsheet boolean spellings into a Python bool."""
+
     normalized = normalize_text(value).lower()
     if not normalized:
         return default
@@ -33,6 +45,8 @@ def parse_bool(value: Any, default: bool = False) -> bool:
 
 
 def parse_int(value: Any, field_name: str) -> int:
+    """Parse a required integer field and raise a contextual import error on failure."""
+
     normalized = normalize_text(value)
     if not normalized:
         raise ValueError(f'{field_name} is required.')
@@ -43,6 +57,8 @@ def parse_int(value: Any, field_name: str) -> int:
 
 
 def require_value(row: dict[str, str], field_name: str, context: str) -> str:
+    """Return a required CSV field or raise a row-specific validation error."""
+
     value = normalize_text(row.get(field_name))
     if not value:
         raise ValueError(f'{context}: {field_name} is required.')
@@ -50,6 +66,8 @@ def require_value(row: dict[str, str], field_name: str, context: str) -> str:
 
 
 def load_csv_rows(file_path: Path, required_columns: tuple[str, ...]) -> list[dict[str, str]]:
+    """Load CSV rows, skipping blanks/comments and enforcing required columns."""
+
     if not file_path.exists():
         return []
 
@@ -78,6 +96,8 @@ def load_csv_rows(file_path: Path, required_columns: tuple[str, ...]) -> list[di
 
 
 def flatten_error_message(payload: Any) -> str:
+    """Flatten nested API error payloads into a readable one-line message."""
+
     if isinstance(payload, str):
         return payload
     if isinstance(payload, list):
@@ -93,10 +113,14 @@ def flatten_error_message(payload: Any) -> str:
 
 
 class ApiError(RuntimeError):
+    """Raised when the remote API call fails during import."""
+
     pass
 
 
 class ApiClient:
+    """Minimal JSON API client for the backend import script."""
+
     def __init__(self, base_url: str, token: str | None = None, timeout: int = 30):
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
@@ -107,6 +131,8 @@ class ApiClient:
             self.headers['Authorization'] = f'Token {token}'
 
     def _build_url(self, path: str, query: dict[str, Any] | None = None) -> str:
+        """Join the base URL, endpoint path, and optional query string."""
+
         url = f"{self.base_url}/{path.lstrip('/')}"
         if query:
             encoded = parse.urlencode({key: value for key, value in query.items() if value is not None})
@@ -115,6 +141,8 @@ class ApiClient:
         return url
 
     def request(self, method: str, path: str, payload: dict[str, Any] | None = None, query: dict[str, Any] | None = None) -> Any:
+        """Send one HTTP request and decode the JSON response."""
+
         data = None
         headers = dict(self.headers)
         if payload is not None:
@@ -137,6 +165,8 @@ class ApiClient:
             raise ApiError(f'Could not reach {self.base_url}: {exc.reason}') from exc
 
     def get_records(self, path: str, query: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch an endpoint that returns either a list or ``{"records": ...}``."""
+
         payload = self.request('GET', path, query=query)
         if isinstance(payload, list):
             return payload
@@ -145,12 +175,16 @@ class ApiClient:
         raise ApiError(f'Unexpected list payload from {path}.')
 
     def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Send a POST request that is expected to return one object."""
+
         response = self.request('POST', path, payload=payload)
         if not isinstance(response, dict):
             raise ApiError(f'Unexpected object payload from POST {path}.')
         return response
 
     def patch(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Send a PATCH request that is expected to return one object."""
+
         response = self.request('PATCH', path, payload=payload)
         if not isinstance(response, dict):
             raise ApiError(f'Unexpected object payload from PATCH {path}.')
@@ -159,12 +193,16 @@ class ApiClient:
 
 @dataclass
 class SyncStats:
+    """Simple counters used to print import progress summaries."""
+
     created: int = 0
     updated: int = 0
     skipped: int = 0
 
 
 def build_policy_lookup(records: list[dict[str, Any]]) -> dict[tuple[str, int], dict[str, Any]]:
+    """Index payroll policies by code and version for idempotent syncing."""
+
     lookup = {}
     for record in records:
         lookup[(normalize_text(record.get('policy_code')), int(record.get('version_number') or 1))] = record
@@ -172,6 +210,8 @@ def build_policy_lookup(records: list[dict[str, Any]]) -> dict[tuple[str, int], 
 
 
 def build_employee_lookup(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Index employees by worker ID for idempotent syncing."""
+
     lookup = {}
     for record in records:
         worker_id = normalize_text(record.get('worker_id'))
@@ -181,6 +221,8 @@ def build_employee_lookup(records: list[dict[str, Any]]) -> dict[str, dict[str, 
 
 
 def build_profile_lookup(records: list[dict[str, Any]]) -> dict[tuple[int, str], dict[str, Any]]:
+    """Index compensation profiles by employee and effective start date."""
+
     lookup = {}
     for record in records:
         employee_id = record.get('employee')
@@ -191,6 +233,8 @@ def build_profile_lookup(records: list[dict[str, Any]]) -> dict[tuple[int, str],
 
 
 def build_adjustment_lookup(records: list[dict[str, Any]]) -> dict[tuple[int, int, int, str, str], dict[str, Any]]:
+    """Index payroll adjustments by the fields the import treats as identity."""
+
     lookup = {}
     for record in records:
         key = (
@@ -205,6 +249,8 @@ def build_adjustment_lookup(records: list[dict[str, Any]]) -> dict[tuple[int, in
 
 
 def sync_policies(client: ApiClient, rows: list[dict[str, str]], errors: list[str]) -> dict[tuple[str, int], dict[str, Any]]:
+    """Create or update payroll policies from the CSV seed pack."""
+
     stats = SyncStats()
     policy_lookup = build_policy_lookup(client.get_records('/payroll/policies/'))
 
@@ -257,6 +303,8 @@ def sync_policies(client: ApiClient, rows: list[dict[str, str]], errors: list[st
 
 
 def sync_employees(client: ApiClient, rows: list[dict[str, str]], errors: list[str]) -> dict[str, dict[str, Any]]:
+    """Create or update employee directory records from the CSV seed pack."""
+
     stats = SyncStats()
     employee_lookup = build_employee_lookup(client.get_records('/employees/'))
 
@@ -267,7 +315,6 @@ def sync_employees(client: ApiClient, rows: list[dict[str, str]], errors: list[s
             payload = {
                 'worker_id': worker_id,
                 'name': require_value(row, 'name', context),
-                'base_salary': require_value(row, 'base_salary', context),
                 'is_active': parse_bool(row.get('is_active'), default=True),
             }
 
@@ -296,6 +343,8 @@ def sync_compensation_profiles(
     policy_lookup: dict[tuple[str, int], dict[str, Any]],
     errors: list[str],
 ) -> None:
+    """Create or update compensation ledger rows from the CSV seed pack."""
+
     stats = SyncStats()
     profile_lookup = build_profile_lookup(client.get_records('/payroll/compensation-profiles/'))
 
@@ -322,7 +371,6 @@ def sync_compensation_profiles(
                 'rice_allowance_amount': optional_text(row.get('rice_allowance_amount')),
                 'social_security_allowance_amount': optional_text(row.get('social_security_allowance_amount')),
                 'eligible_for_social_security': parse_bool(row.get('eligible_for_social_security'), default=True),
-                'trial_period_end_date': optional_text(row.get('trial_period_end_date')),
                 'payroll_policy': policy_id,
                 'effective_from': require_value(row, 'effective_from', context),
                 'effective_to': optional_text(row.get('effective_to')),
@@ -351,6 +399,8 @@ def sync_adjustments(
     employee_lookup: dict[str, dict[str, Any]],
     errors: list[str],
 ) -> None:
+    """Create or update manual payroll adjustments from the CSV seed pack."""
+
     stats = SyncStats()
     adjustment_cache: dict[tuple[int, int], dict[tuple[int, int, int, str, str], dict[str, Any]]] = {}
 
@@ -406,6 +456,8 @@ def sync_adjustments(
 
 
 def main() -> int:
+    """Parse arguments, load CSV files, and run the staged import workflow."""
+
     parser = argparse.ArgumentParser(
         description='Bulk import trial-run payroll seed data through the existing backend APIs.',
     )
@@ -444,7 +496,7 @@ def main() -> int:
         )
         employee_rows = load_csv_rows(
             input_dir / 'employees.csv',
-            ('worker_id', 'name', 'base_salary'),
+            ('worker_id', 'name'),
         )
         compensation_rows = load_csv_rows(
             input_dir / 'compensation_profiles.csv',

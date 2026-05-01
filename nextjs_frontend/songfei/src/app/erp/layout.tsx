@@ -1,6 +1,13 @@
+/**
+ * Provides the shared ERP application frame.
+ *
+ * Every ERP route renders inside this two-column layout so internal tools share
+ * one sidebar, one navigation model, and one visual context.
+ */
 import React, { ReactNode } from 'react';
 import Link from 'next/link';
 
+/** Wraps ERP pages with the sidebar navigation and content area. */
 export default function ErpLayout({ children }: { children: ReactNode }) {
   return (
     <div style={{ display: 'flex', minHeight: 'calc(100vh - 160px)' }}>

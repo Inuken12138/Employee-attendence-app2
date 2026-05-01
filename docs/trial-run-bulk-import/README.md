@@ -8,7 +8,7 @@ This pack lets you enter employee and payroll setup data once in CSV files, then
 
 - `employees.csv`: required for worker master data.
 - `payroll_policies.csv`: optional, but useful when the trial run needs a specific payroll ruleset.
-- `compensation_profiles.csv`: optional, but usually needed if monthly salary or allowances differ from the employee base salary.
+- `compensation_profiles.csv`: required if the imported employees need to be payroll-ready, because monthly salary now lives in the compensation ledger.
 - `payroll_adjustments.csv`: optional one-off additions or deductions for a test month.
 
 Blank rows are ignored. Rows whose first filled cell starts with `#` are also ignored, so you can temporarily comment out data rows.
@@ -45,17 +45,18 @@ Required columns:
 
 - `worker_id`
 - `name`
-- `base_salary`
 
 Optional columns:
 
 - `is_active`
 
+Employee salary is no longer imported through `employees.csv`. Use `compensation_profiles.csv` for monthly salary and payroll package data.
+
 Example:
 
 ```csv
-worker_id,name,base_salary,is_active
-1001,Example Employee,4500000,true
+worker_id,name,is_active
+1001,Example Employee,true
 ```
 
 ### payroll_policies.csv
@@ -101,7 +102,12 @@ Useful optional columns:
 - `rice_allowance_amount`
 - `social_security_allowance_amount`
 - `eligible_for_social_security`
-- `trial_period_end_date`
+
+Notes:
+
+- `eligible_for_social_security` is a manual employer decision.
+- Leave `effective_to` blank for the current active package.
+- When pay changes, close the old record with its last valid day and start the next record on the following day so there is no overlap and no accidental gap.
 
 ### payroll_adjustments.csv
 

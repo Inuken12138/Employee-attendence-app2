@@ -1,16 +1,33 @@
 'use client';
+
+/**
+ * Defines the Next.js page module for the /login route.
+ *
+ * This file wires the route into the App Router tree and hosts the page-level UI or hands control to a feature-owned screen component.
+ */
+
+/**
+ * Implements the user sign-in flow.
+ *
+ * The page collects credentials, requests an auth token from Django, stores the
+ * token in localStorage, and then returns the user either to the route they
+ * originally wanted or to the ERP overview by default.
+ */
+
 import { useState, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useErrorPopup from '../hooks/useErrorPopup';
 import { buildApiUrl } from '@/lib/api';
 
+/** Renders the login form and manages the token-based sign-in flow. */
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const router = useRouter();
   const { showErrorPopup } = useErrorPopup();
 
+  /** Reads the optional redirect query param and falls back to the ERP landing page. */
   const getRedirectPath = () => {
     if (typeof window === 'undefined') {
       return '/erp';
@@ -20,6 +37,7 @@ export default function LoginPage() {
     return redirect && redirect.startsWith('/') ? redirect : '/erp';
   };
 
+  /** Sends credentials to the backend, saves the returned token, and redirects on success. */
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     const res = await fetch(buildApiUrl('/login/'), {

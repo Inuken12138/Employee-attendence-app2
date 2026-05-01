@@ -1,3 +1,12 @@
+"""Database models that back the kitchen planner domain.
+
+These models store two kinds of data:
+
+- ERP-side metadata that makes a normal product usable in the kitchen planner
+- customer-side project snapshots, validations, duplication history, and
+    add-to-cart bundles derived from a saved design
+"""
+
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,25 +22,39 @@ MAX_GLB_FILE_SIZE_BYTES = 25 * 1024 * 1024
 
 
 def _profile_upload_path(instance, filename):
+    """Build a stable upload path for planner GLB assets."""
+
     suffix = Path(filename).suffix.lower()
     safe_name = Path(filename).stem.replace(' ', '-').lower() or 'model'
     return f"planner/products/{instance.product_id}/{safe_name}{suffix}"
 
 
 def _production_asset_upload_path(instance, filename):
+    """Build a stable upload path for manufacturing assets tied to a profile."""
+
     suffix = Path(filename).suffix.lower()
     safe_name = Path(filename).stem.replace(' ', '-').lower() or 'asset'
     return f"planner/production/{instance.designer_profile.product.product_id}/{safe_name}{suffix}"
 
 
 class KitchenDesignerProductProfile(models.Model):
+    """Stores planner-specific metadata for a catalog product.
+
+    A normal storefront product becomes planner-ready only after this profile is
+    configured with geometry, taxonomy, and validation information.
+    """
+
     class CatalogState(models.TextChoices):
+        """Describe how close the product is to being live in the planner catalog."""
+
         DRAFT = 'draft', 'Draft'
         STAGING = 'staging', 'Staging'
         PUBLISHED = 'published', 'Published'
         ARCHIVED = 'archived', 'Archived'
 
     class PlannerRole(models.TextChoices):
+        """Classify how the product behaves inside a kitchen layout."""
+
         BASE = 'base', 'Base cabinet'
         WALL = 'wall', 'Wall cabinet'
         TALL = 'tall', 'Tall cabinet'
@@ -41,11 +64,15 @@ class KitchenDesignerProductProfile(models.Model):
         ACCESSORY = 'accessory', 'Accessory'
 
     class OriginAnchor(models.TextChoices):
+        """Describe which point of the product is treated as its placement origin."""
+
         FLOOR_BACK_LEFT = 'floor_back_left', 'Floor back left'
         FLOOR_BACK_CENTER = 'floor_back_center', 'Floor back center'
         CENTER = 'center', 'Center'
 
     class PricingMode(models.TextChoices):
+        """Describe how planner pricing should be derived for this product."""
+
         USE_PRODUCT_PRICE = 'use_product_price', 'Use product price'
         OVERRIDE = 'override', 'Override'
         FORMULA = 'formula', 'Formula'
@@ -90,11 +117,17 @@ class KitchenDesignerProductProfile(models.Model):
         ordering = ['product__name']
 
     def __str__(self):
+        """Return a concise label for admin pages and debugging."""
+
         return f"KitchenDesignerProductProfile({self.product.product_id})"
 
 
 class KitchenDesignerAssetValidation(models.Model):
+    """Stores the outcome of one planner asset validation run."""
+
     class Status(models.TextChoices):
+        """Summarize whether the validation run passed or failed."""
+
         PENDING = 'pending', 'Pending'
         PASSED = 'passed', 'Passed'
         FAILED = 'failed', 'Failed'
@@ -112,11 +145,17 @@ class KitchenDesignerAssetValidation(models.Model):
         ordering = ['-validated_at']
 
     def __str__(self):
+        """Return a compact label showing product code and validation status."""
+
         return f"KitchenDesignerAssetValidation({self.designer_profile.product.product_id}, {self.status})"
 
 
 class KitchenProductionAsset(models.Model):
+    """Stores production-side files generated or uploaded for a planner product."""
+
     class AssetType(models.TextChoices):
+        """Describe the kind of manufacturing artifact the file represents."""
+
         GCODE = 'gcode', 'G-code'
         CNC_PROGRAM = 'cnc_program', 'CNC program'
         TOOLPATH = 'toolpath', 'Toolpath'
@@ -142,11 +181,17 @@ class KitchenProductionAsset(models.Model):
         ordering = ['label', '-created_at']
 
     def __str__(self):
+        """Return a concise label for admin/debug output."""
+
         return f"KitchenProductionAsset({self.label})"
 
 
 class KitchenProject(models.Model):
+    """Represents one customer kitchen-design workspace."""
+
     class Status(models.TextChoices):
+        """Track where the project is in the planner lifecycle."""
+
         DRAFT = 'draft', 'Draft'
         VALIDATING = 'validating', 'Validating'
         VALID = 'valid', 'Valid'
@@ -156,6 +201,8 @@ class KitchenProject(models.Model):
         ARCHIVED = 'archived', 'Archived'
 
     class ShareMode(models.TextChoices):
+        """Describe whether a project is private or shareable by link."""
+
         PRIVATE = 'private', 'Private'
         VIEW_LINK = 'view_link', 'View link'
 
@@ -174,10 +221,14 @@ class KitchenProject(models.Model):
         ordering = ['-updated_at', '-created_at']
 
     def ensure_share_token(self):
+        """Create a share token when link sharing is enabled and missing."""
+
         if self.share_mode == self.ShareMode.VIEW_LINK and not self.share_token:
             self.share_token = uuid4().hex
 
     def save(self, *args, **kwargs):
+        """Generate a unique slug and share token before persisting the project."""
+
         if not self.slug:
             base_slug = slugify(self.title)[:60] or 'kitchen-project'
             self.slug = f"{base_slug}-{uuid4().hex[:8]}"
@@ -186,10 +237,14 @@ class KitchenProject(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
+        """Return the project slug for easy identification."""
+
         return f"KitchenProject({self.slug})"
 
 
 class KitchenProjectVersion(models.Model):
+    """Immutable snapshot of a kitchen project at a point in time."""
+
     project = models.ForeignKey(KitchenProject, on_delete=models.CASCADE, related_name='versions')
     version_name = models.CharField(max_length=120, blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='kitchen_project_versions')
@@ -208,16 +263,24 @@ class KitchenProjectVersion(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        """Fill in a default version name when the caller omits one."""
+
         if not self.version_name:
             self.version_name = f"Version {self.version_number}"
         super().save(*args, **kwargs)
 
     def __str__(self):
+        """Return the project slug and version number for quick identification."""
+
         return f"KitchenProjectVersion({self.project.slug}, v{self.version_number})"
 
 
 class KitchenValidationRun(models.Model):
+    """Stores the result of validating one project version."""
+
     class Status(models.TextChoices):
+        """Summarize whether a version passed validation."""
+
         PASSED = 'passed', 'Passed'
         FAILED = 'failed', 'Failed'
 
@@ -233,11 +296,17 @@ class KitchenValidationRun(models.Model):
         ordering = ['-completed_at', '-started_at']
 
     def __str__(self):
+        """Return a concise validation label for admin/debug views."""
+
         return f"KitchenValidationRun({self.project_version.project.slug}, {self.status})"
 
 
 class KitchenCartBundle(models.Model):
+    """Groups cart items generated from one validated planner project."""
+
     class Status(models.TextChoices):
+        """Track whether the bundle is current, replaced, or already checked out."""
+
         ACTIVE = 'active', 'Active'
         SUPERSEDED = 'superseded', 'Superseded'
         CHECKED_OUT = 'checked_out', 'Checked out'
@@ -253,11 +322,17 @@ class KitchenCartBundle(models.Model):
         ordering = ['-updated_at', '-created_at']
 
     def __str__(self):
+        """Return the parent project slug and bundle state."""
+
         return f"KitchenCartBundle({self.project.slug}, {self.status})"
 
 
 class KitchenProjectDuplication(models.Model):
+    """Audit record for copying one planner project into another."""
+
     class Reason(models.TextChoices):
+        """Explain why the duplicate project was created."""
+
         REP_ASSIST = 'rep_assist', 'Rep assist'
         CUSTOMER_COPY = 'customer_copy', 'Customer copy'
         VARIANT = 'variant', 'Variant'
@@ -274,4 +349,6 @@ class KitchenProjectDuplication(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
+        """Return a compact description of the duplication relationship."""
+
         return f"KitchenProjectDuplication({self.source_project.slug} -> {self.duplicated_project.slug})"

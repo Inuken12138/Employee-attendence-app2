@@ -1,3 +1,8 @@
+/**
+ * 3D scene component for the kitchen designer.
+ *
+ * These files turn planner state into visual geometry, camera behavior, and lighting inside the design canvas.
+ */
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import { useEffect, useMemo, useRef } from 'react';
 import type { PerspectiveCamera as PerspectiveCameraImpl } from 'three';
@@ -7,9 +12,13 @@ import type { PlannerRoom } from '../types/planner';
 
 const MM_TO_SCENE = 0.001;
 
+/** Returns the camera frame for the current input. */
 function getCameraFrame(room?: PlannerRoom, compact = false) {
+  /** Helper used by this module to manage width. */
   const width = (room?.widthMm ?? 4000) * MM_TO_SCENE;
+  /** Helper used by this module to manage depth. */
   const depth = (room?.depthMm ?? 4000) * MM_TO_SCENE;
+  /** Helper used by this module to manage height. */
   const height = (room?.heightMm ?? 2500) * MM_TO_SCENE;
   const footprint = Math.max(width, depth);
   const distance = compact ? footprint * 1.05 : footprint * 0.94;
@@ -26,6 +35,7 @@ function getCameraFrame(room?: PlannerRoom, compact = false) {
   };
 }
 
+/** Renders the scene camera component used by this module. */
 export default function SceneCamera({ room, compact = false }: { room?: PlannerRoom; compact?: boolean }) {
   const cameraRef = useRef<PerspectiveCameraImpl | null>(null);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);

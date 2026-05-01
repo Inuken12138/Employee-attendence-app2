@@ -1,3 +1,8 @@
+/**
+ * Pure helper functions for the kitchen designer.
+ *
+ * These utilities perform calculations, schema shaping, or taxonomy lookups without owning React rendering or network requests.
+ */
 import type { PlannerRoom, PlannerStage, PlannerWallSide } from '../types/planner';
 
 export const ROOM_WALL_MIN_MM = 1500;
@@ -21,18 +26,22 @@ export interface RoomFootprint {
   isFallback: boolean;
 }
 
+/** Clamps the  so it stays within allowed limits. */
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Clamps the wall measurement so it stays within allowed limits. */
 export function clampWallMeasurement(value: number) {
   return Math.round(clamp(value, ROOM_WALL_MIN_MM, ROOM_WALL_MAX_MM));
 }
 
+/** Clamps the height measurement so it stays within allowed limits. */
 export function clampHeightMeasurement(value: number) {
   return Math.round(clamp(value, ROOM_HEIGHT_MIN_MM, ROOM_HEIGHT_MAX_MM));
 }
 
+/** Returns the wall measurement for the current input. */
 export function getWallMeasurement(room: PlannerRoom, wall: PlannerWallSide) {
   if (wall === 'top') {
     return room.topMm;
@@ -49,6 +58,7 @@ export function getWallMeasurement(room: PlannerRoom, wall: PlannerWallSide) {
   return room.leftMm;
 }
 
+/** Derives the room footprint from other planner or payroll values. */
 export function deriveRoomFootprint(room: Pick<PlannerRoom, 'topMm' | 'rightMm' | 'bottomMm' | 'leftMm'>): RoomFootprint {
   const topMm = clampWallMeasurement(room.topMm);
   const rightMm = clampWallMeasurement(room.rightMm);
@@ -104,6 +114,7 @@ export function deriveRoomFootprint(room: Pick<PlannerRoom, 'topMm' | 'rightMm' 
   };
 }
 
+/** Builds the planner room used by this module. */
 export function buildPlannerRoom(input: RoomMeasurementInput = {}): PlannerRoom {
   const widthMm = input.widthMm ?? DEFAULT_ROOM_WALL_MM;
   const depthMm = input.depthMm ?? DEFAULT_ROOM_WALL_MM;
@@ -126,6 +137,7 @@ export function buildPlannerRoom(input: RoomMeasurementInput = {}): PlannerRoom 
   };
 }
 
+/** Updates the planner wall and returns the next value. */
 export function updatePlannerWall(room: PlannerRoom, wall: PlannerWallSide, nextMm: number) {
   return buildPlannerRoom({
     ...room,
@@ -136,6 +148,7 @@ export function updatePlannerWall(room: PlannerRoom, wall: PlannerWallSide, next
   });
 }
 
+/** Updates the planner height and returns the next value. */
 export function updatePlannerHeight(room: PlannerRoom, nextMm: number) {
   return buildPlannerRoom({
     ...room,
@@ -143,10 +156,12 @@ export function updatePlannerHeight(room: PlannerRoom, nextMm: number) {
   });
 }
 
+/** Formats the millimeters into display-ready text. */
 export function formatMillimeters(value: number) {
   return `${Math.round(value).toLocaleString()} mm`;
 }
 
+/** Parses the measurement input into a value the module can use. */
 export function parseMeasurementInput(value: string) {
   const numericValue = Number.parseInt(value.replace(/[^\d-]/g, ''), 10);
 
@@ -157,6 +172,7 @@ export function parseMeasurementInput(value: string) {
   return numericValue;
 }
 
+/** Returns whether planner room valid. */
 export function isPlannerRoomValid(room: PlannerRoom) {
   return [room.topMm, room.rightMm, room.bottomMm, room.leftMm].every(
     (measurement) => measurement >= ROOM_WALL_MIN_MM && measurement <= ROOM_WALL_MAX_MM,
@@ -165,15 +181,18 @@ export function isPlannerRoomValid(room: PlannerRoom) {
 
 const stageOrder: PlannerStage[] = ['define-space', 'make-it-yours', 'make-it-happen'];
 
+/** Returns the planner stage index for the current input. */
 export function getPlannerStageIndex(stage: PlannerStage) {
   return stageOrder.indexOf(stage);
 }
 
+/** Returns the next planner stage for the current input. */
 export function getNextPlannerStage(stage: PlannerStage): PlannerStage | null {
   const index = getPlannerStageIndex(stage);
   return stageOrder[index + 1] ?? null;
 }
 
+/** Returns whether this flow can navigate to planner stage. */
 export function canNavigateToPlannerStage(currentStage: PlannerStage, targetStage: PlannerStage, room: PlannerRoom) {
   const currentIndex = getPlannerStageIndex(currentStage);
   const targetIndex = getPlannerStageIndex(targetStage);
